@@ -1,0 +1,6 @@
+dados/
+supabase/importacao.sql
+node_modules/
+dist/
+.env
+.env.local
