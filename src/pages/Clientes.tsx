@@ -4,7 +4,7 @@ import { useApp, useDados } from '../lib/app'
 import { moeda, doc, normaliza } from '../lib/format'
 import { Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Selo, Vazio, useAviso } from '../components/ui'
 
-const novo = (): Partial<Cliente> => ({ status: 'Ativo', percentual_honorario: 0, dia_vencimento: 7, multa_por_atraso: false })
+const novo = (): Partial<Cliente> => ({ status: 'Ativo', percentual_honorario: 0, dia_vencimento: 10, multa_por_atraso: true })
 
 export default function Clientes() {
   const { config } = useApp()
@@ -117,13 +117,13 @@ function FormCliente({ cliente, sm, fechar, salvo }: { cliente: Partial<Cliente>
               onChange={e => set('percentual_honorario', Number(e.target.value))} />
           </Campo>
           <Campo rotulo="Dia de vencimento" className="col-span-3 sm:col-span-2">
-            <input className="campo" type="number" min="1" max="31" value={c.dia_vencimento ?? 7} onChange={e => set('dia_vencimento', Number(e.target.value))} />
+            <input className="campo" type="number" min="1" max="31" value={c.dia_vencimento ?? 10} onChange={e => set('dia_vencimento', Number(e.target.value))} />
           </Campo>
           <div className="col-span-6 sm:col-span-2 self-end pb-2 text-sm">
             Honorário: <b className="num">{moeda(sm * (c.percentual_honorario || 0) / 100)}</b>
           </div>
           <label className="col-span-6 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={!!c.multa_por_atraso} onChange={e => set('multa_por_atraso', e.target.checked)} /> Cobrar multa por atraso
+            <input type="checkbox" checked={!!c.multa_por_atraso} onChange={e => set('multa_por_atraso', e.target.checked)} /> Multa por atraso (cobra juros de 1,55% a.m. quando a competência vira)
           </label>
         </div>
 

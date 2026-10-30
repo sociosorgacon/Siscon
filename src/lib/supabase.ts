@@ -32,19 +32,21 @@ export type Honorario = {
   valor_original: number; juros: number; juros_calc: number; valor_atualizado_calc: number; desconto: number
   valor_pago_acumulado: number; saldo: number; status: string; situacao: string; meses_atraso: number
   calcular_juros: boolean; data_pagamento: string | null; metodo_pagamento: string | null; observacao: string | null
+  em_atraso: boolean; cliente_telefone: string | null; multa_por_atraso: boolean
 }
 
 export type Despesa = {
   id: string; cliente_id: string; cliente_nome: string; cliente_cnpj: string; descricao: string; valor: number
   data: string; competencia: string; status: string; valor_pago: number; saldo: number
   data_pagamento: string | null; metodo_pagamento: string | null; observacoes: string | null
+  em_atraso: boolean; cliente_telefone: string | null
 }
 
 export type ReciboItem = { tipo: string; descricao: string; valor: number; desconto: number; competencia: string | null }
 export type Recibo = {
   id: string; numero: number | null; cliente_id: string | null; cliente_nome: string; cliente_cnpj: string | null
   valor: number; data_pagamento: string; metodo_pagamento: string | null; observacao: string | null
-  cancelado: boolean; motivo_cancelamento: string | null; criado_por: string | null; recibo_itens?: ReciboItem[]
+  com_recibo: boolean; cancelado: boolean; motivo_cancelamento: string | null; criado_por: string | null; recibo_itens?: ReciboItem[]
 }
 
 /** Busca todas as linhas, paginando de 1000 em 1000 (limite padrão do Supabase). */

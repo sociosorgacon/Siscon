@@ -5,7 +5,7 @@ import { hojeIso } from '../lib/format'
 import { Botao, Cabecalho, Campo, Cartao, useAviso } from '../components/ui'
 
 const descricoes: Partial<Record<keyof Config, string>> = {
-  salario_minimo: 'Salário mínimo vigente', vigencia_salario: 'Data de vigência do salário', taxa_juros: 'Taxa de juros mensal (%)',
+  salario_minimo: 'Salário mínimo vigente', vigencia_salario: 'Data de vigência do salário',
   competencia_atual: 'Competência atual para geração de honorários e juros', escritorio_nome: 'Nome do escritório (recibo)',
   escritorio_cnpj: 'CNPJ do escritório (recibo)', escritorio_endereco: 'Endereço do escritório (recibo)',
   escritorio_cidade: 'Cidade/UF (local do recibo)', escritorio_telefone: 'Telefone do escritório (recibo)',
@@ -52,10 +52,10 @@ export default function Configuracoes() {
           <div className="grid grid-cols-2 gap-3 p-4">
             <Campo rotulo="Salário mínimo (R$)">{campo('salario_minimo', { inputMode: 'decimal' })}</Campo>
             <Campo rotulo="Vigência">{campo('vigencia_salario', { type: 'date' })}</Campo>
-            <Campo rotulo="Juros ao mês (%)">{campo('taxa_juros', { inputMode: 'decimal' })}</Campo>
+            <Campo rotulo="Juros ao mês (fixo)"><input className="campo bg-slate-50" value="1,55%" disabled /></Campo>
             <Campo rotulo="Competência atual (MM/AAAA)">{campo('competencia_atual')}</Campo>
             <p className="col-span-2 text-xs text-slate-500">
-              Novo salário mínimo vale para os honorários gerados a partir de agora; os já lançados mantêm o valor. Juros são simples, por mês de competência em atraso.
+              Novo salário mínimo vale para os honorários gerados a partir de agora; os já lançados mantêm o valor. Juros simples de 1,55% ao mês sobre o valor original, contados a cada virada de competência, só para clientes com multa por atraso.
             </p>
           </div>
         </Cartao>

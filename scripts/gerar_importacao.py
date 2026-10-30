@@ -63,8 +63,8 @@ def so_digitos(v):
 def insert(tabela, linhas):
     if not linhas:
         return ""
-    cols = list(linhas[0].keys())
-    vals = ",\n".join("(" + ", ".join(q(l[c]) for c in cols) + ")" for l in linhas)
+    cols = list(dict.fromkeys(k for l in linhas for k in l))
+    vals = ",\n".join("(" + ", ".join(q(l.get(c)) for c in cols) + ")" for l in linhas)
     return f"insert into {tabela} ({', '.join(cols)}) values\n{vals};\n\n"
 
 
@@ -79,7 +79,7 @@ def main(caminho):
         "email": c.get("email"), "telefone": c.get("telefone"), "logradouro": c.get("logradouro"),
         "municipio": c.get("municipio"), "uf": uf(c.get("uf")), "situacao": situacao(c.get("situacao")),
         "status": c["status"], "percentual_honorario": c.get("percentual_honorario") or 0,
-        "dia_vencimento": c.get("dia_vencimento") or 7, "multa_por_atraso": bool(c.get("multa_por_atraso")),
+        "dia_vencimento": c.get("dia_vencimento") or 7, "multa_por_atraso": c.get("multa_por_atraso") is not False,  # padrão SIM no Base44
         "created_at": c["created_date"],
     } for c in d["Cliente"]]
 
@@ -129,24 +129,58 @@ def main(caminho):
         if not cid:
             avulsos.append(r["cliente_nome"])
         recibos.append({
-            "id": rid, "legacy_id": r["id"], "numero": int(r["numero_recibo"]) or None,  # 0 = gerado sem número pela conciliação "cliente_id": cid,
+            "id": rid, "legacy_id": r["id"], "numero": int(r["numero_recibo"]) or None,  # 0 = gerado sem número pela conciliação
+            "cliente_id": cid,
             "cliente_nome": r["cliente_nome"], "cliente_cnpj": r.get("cliente_cnpj"), "valor": r["valor"],
             "data_pagamento": data(r["data_pagamento"]), "created_at": r["created_date"],
         })
-        for it in r.get("itens_pagos") or []:
+        lista_itens = r.get("itens_pagos") or []
+        if not lista_itens and r.get("honorario_id"):  # recibo "simples": vínculo no próprio recibo
+            lista_itens = [{"tipo": "Honorário Contábil", "descricao": f"Honorários — Competência {r.get('competencia') or ''}".strip(),
+                            "valor": r["valor"], "competencia": r.get("competencia"), "honorario_id": r["honorario_id"]}]
+        for it in lista_itens:
+            hid = hon_map.get(it.get("honorario_id"))
+            if not hid and len(lista_itens) == 1 and r.get("honorario_id"):
+                hid = hon_map.get(r["honorario_id"])
             itens.append({
                 "recibo_id": rid, "tipo": it.get("tipo") or "Honorário Contábil",
                 "descricao": it.get("descricao") or "", "valor": it.get("valor") or 0,
                 "competencia": comp(it.get("competencia")),
-                "honorario_id": hon_map.get(it.get("honorario_id")), "despesa_id": des_map.get(it.get("despesa_id")),
+                "honorario_id": hid, "despesa_id": des_map.get(it.get("despesa_id")),
             })
 
+    # Baixas sem recibo do Base44 (honorário/despesa pago sem nenhum recibo vinculado):
+    # viram registros de baixa "sem recibo", para entrarem no "Recebido no mês" e poderem ser canceladas.
+    ligados_h = {i["honorario_id"] for i in itens if i["honorario_id"]}
+    ligados_d = {i["despesa_id"] for i in itens if i["despesa_id"]}
+    sem_recibo = 0
+    for h in honorarios:
+        if (h["valor_pago_acumulado"] or 0) > 0 and h["id"] not in ligados_h:
+            rid = novo_id("baixa_h", h["id"]); c = next(x for x in clientes if x["id"] == h["cliente_id"])
+            recibos.append({"id": rid, "legacy_id": None, "numero": None, "cliente_id": c["id"], "cliente_nome": c["razao_social"],
+                            "cliente_cnpj": c["cnpj"], "valor": h["valor_pago_acumulado"],
+                            "data_pagamento": h["data_pagamento"] or h["vencimento"], "created_at": h["created_at"]})
+            itens.append({"recibo_id": rid, "tipo": "Honorário Contábil", "descricao": f"Honorários — Competência {h['competencia'][5:7]}/{h['competencia'][:4]}",
+                          "valor": h["valor_pago_acumulado"], "competencia": h["competencia"], "honorario_id": h["id"], "despesa_id": None})
+            sem_recibo += 1
+    for x in despesas:
+        if (x["valor_pago"] or 0) > 0 and x["id"] not in ligados_d:
+            rid = novo_id("baixa_d", x["id"]); c = next(y for y in clientes if y["id"] == x["cliente_id"])
+            recibos.append({"id": rid, "legacy_id": None, "numero": None, "cliente_id": c["id"], "cliente_nome": c["razao_social"],
+                            "cliente_cnpj": c["cnpj"], "valor": x["valor_pago"],
+                            "data_pagamento": x["data_pagamento"] or x["data"], "created_at": x["created_at"]})
+            itens.append({"recibo_id": rid, "tipo": "Despesa Extra", "descricao": x["descricao"], "valor": x["valor_pago"],
+                          "competencia": x["competencia"], "honorario_id": None, "despesa_id": x["id"]})
+            sem_recibo += 1
+    if sem_recibo:
+        avisos.append(f"{sem_recibo} baixas sem recibo do Base44 registradas como 'sem recibo'")
+
     if avulsos:
-        avisos.append(f"{len(avulsos)} recibos avulsos (pessoa sem cadastro de cliente) — mantidos sem vínculo")
+        avisos.append(f"{len(avulsos)} recibos sem cliente identificável (avulsos ou de vários clientes) — mantidos sem vínculo")
     numeros = [r["numero"] for r in recibos if r["numero"]]
     sem_num = len(recibos) - len(numeros)
     if sem_num:
-        avisos.append(f"{sem_num} recibos antigos sem número (gerados pela conciliação do Base44) — importados com número vazio")
+        avisos.append(f"{sem_num} baixas sem número (conciliação/baixa sem recibo do Base44)")
     dup = {n for n in numeros if numeros.count(n) > 1}
     if dup:
         avisos.append(f"Números de recibo duplicados: {sorted(dup)} — renumere antes de importar")

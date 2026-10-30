@@ -41,12 +41,12 @@ export default function Honorarios() {
   }
 
   async function avancar() {
-    if (!confirm(`Encerrar a competência ${config.competencia_atual} e avançar para a próxima?\n\nIsso gera os honorários do novo mês e passa a calcular mais 1 mês de juros sobre os atrasados.`)) return
+    if (!confirm(`Encerrar a competência ${config.competencia_atual} e avançar para a próxima?\n\nIsso gera os honorários e as despesas fixas do novo mês e aplica mais 1 mês de juros (1,55%) nos atrasados de clientes com multa.`)) return
     setOcupado(true)
     try {
-      const r = ok(await supabase.rpc('avancar_competencia')) as { competencia: string; gerados: number }
+      const r = ok(await supabase.rpc('avancar_competencia')) as { competencia: string; gerados: number; despesas_fixas: number }
       await recarregarConfig(); setCompSel(r.competencia)
-      avisar(`Competência ${r.competencia} aberta: ${r.gerados} honorários gerados.`)
+      avisar(`Competência ${r.competencia} aberta: ${r.gerados} honorários e ${r.despesas_fixas ?? 0} despesas fixas gerados.`)
     } catch (e) { avisar((e as Error).message, 'erro') } finally { setOcupado(false) }
   }
 
@@ -54,7 +54,7 @@ export default function Honorarios() {
     <>
       <Cabecalho titulo="Honorários" subtitulo="Valor = salário mínimo × % do cliente · vencimento no mês seguinte"
         acoes={<>
-          <Botao variante="secundario" onClick={() => setNovo(true)}>Lançar avulso</Botao>
+          <Botao variante="secundario" onClick={() => setNovo(true)}>Geração avulsa</Botao>
           <Botao variante="secundario" onClick={gerar} disabled={ocupado || !competencia}>Gerar competência {competencia}</Botao>
           <Botao onClick={avancar} disabled={ocupado}>Avançar competência</Botao>
         </>} />
@@ -145,38 +145,57 @@ function EditarHonorario({ h, fechar, salvo }: { h: Honorario; fechar: () => voi
 function NovoHonorario({ competencia, fechar, salvo }: { competencia: string; fechar: () => void; salvo: () => void }) {
   const avisar = useAviso()
   const { config } = useApp()
+  const sm = Number(config.salario_minimo)
   const { dados: clientes } = useDados(() => todos<Cliente>((a, b) => supabase.from('clientes').select('*').eq('status', 'Ativo').order('razao_social').range(a, b)))
-  const [clienteId, setClienteId] = useState('')
-  const [comp_, setComp] = useState(competencia)
-  const cli = clientes?.find(c => c.id === clienteId)
-  const sugerido = cli ? Math.round(Number(config.salario_minimo) * cli.percentual_honorario) / 100 : 0
-  const [valor, setValor] = useState<number | ''>('')
+  const [sel, setSel] = useState<string[]>([])
+  const [filtro, setFiltro] = useState('')
+  const [comps, setComps] = useState(competencia)
+  const [personalizado, setPersonalizado] = useState('')
+  const lista = (clientes || []).filter(c => !filtro || normaliza(c.razao_social).includes(normaliza(filtro)))
+  const listaComps = comps.split(/[\s,;]+/).filter(Boolean)
+  const compsValidas = listaComps.every(c => /^\d{2}\/\d{4}$/.test(c))
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault()
-    if (!cli) return
-    const iso = compParaIso(comp_)
-    const [a, m] = iso.split('-').map(Number)
-    const prox = new Date(a, m, 1)
-    const ultimo = new Date(prox.getFullYear(), prox.getMonth() + 1, 0).getDate()
-    const venc = `${prox.getFullYear()}-${String(prox.getMonth() + 1).padStart(2, '0')}-${String(Math.min(cli.dia_vencimento, ultimo)).padStart(2, '0')}`
-    const v = valor === '' ? sugerido : valor
+    if (!sel.length) return avisar('Selecione ao menos um cliente.', 'erro')
+    if (!listaComps.length || !compsValidas) return avisar('Competências no formato MM/AAAA, separadas por vírgula.', 'erro')
+    const vp = Number(personalizado.replace(',', '.'))
+    const linhas = sel.flatMap(id => {
+      const cli = clientes!.find(c => c.id === id)!
+      return listaComps.map(cp => {
+        const iso = compParaIso(cp)
+        const [a, m] = iso.split('-').map(Number)
+        const prox = new Date(a, m, 1)
+        const ultimo = new Date(prox.getFullYear(), prox.getMonth() + 1, 0).getDate()
+        const venc = `${prox.getFullYear()}-${String(prox.getMonth() + 1).padStart(2, '0')}-${String(Math.min(cli.dia_vencimento, ultimo)).padStart(2, '0')}`
+        const v = personalizado ? vp : Math.round(sm * cli.percentual_honorario) / 100
+        return { cliente_id: id, competencia: iso, juros_desde: iso, vencimento: venc, valor_original: v, valor_atualizado: v, status: 'Pendente' }
+      })
+    })
+    if (linhas.some(l => !(l.valor_original > 0))) return avisar('Há cliente com valor zero. Informe um valor personalizado.', 'erro')
     try {
-      ok(await supabase.from('honorarios').insert({ cliente_id: cli.id, competencia: iso, juros_desde: iso, vencimento: venc, valor_original: v, valor_atualizado: v, status: 'Pendente' }))
-      avisar('Honorário lançado.'); salvo()
+      const r = ok(await supabase.from('honorarios').upsert(linhas, { onConflict: 'cliente_id,competencia', ignoreDuplicates: true }).select('id')) as { id: string }[]
+      avisar(`${r.length} honorário(s) lançado(s)${r.length < linhas.length ? `; ${linhas.length - r.length} já existiam e foram mantidos` : ''}.`); salvo()
     } catch (err) { avisar((err as Error).message, 'erro') }
   }
 
   return (
-    <Modal titulo="Lançar honorário avulso" aberto fechar={fechar}>
+    <Modal titulo="Geração avulsa de honorários" aberto fechar={fechar} largura="max-w-2xl">
       <form onSubmit={salvar} className="grid grid-cols-2 gap-3">
-        <Campo rotulo="Cliente" className="col-span-2">
-          <select className="campo" required value={clienteId} onChange={e => { setClienteId(e.target.value); setValor('') }}>
-            <option value="">Selecione…</option>{clientes?.map(c => <option key={c.id} value={c.id}>{c.razao_social}</option>)}
-          </select>
-        </Campo>
-        <Campo rotulo="Competência (MM/AAAA)"><input className="campo" pattern="\d{2}/\d{4}" required value={comp_} onChange={e => setComp(e.target.value)} /></Campo>
-        <Campo rotulo={`Valor (sugerido ${moeda(sugerido)})`}><input className="campo" type="number" step="0.01" value={valor} placeholder={String(sugerido)} onChange={e => setValor(e.target.value === '' ? '' : Number(e.target.value))} /></Campo>
+        <div className="col-span-2">
+          <span className="rotulo">Clientes ({sel.length} selecionado{sel.length === 1 ? '' : 's'})</span>
+          <input className="campo mb-1" placeholder="Filtrar clientes" value={filtro} onChange={e => setFiltro(e.target.value)} />
+          <div className="max-h-48 overflow-y-auto rounded-md border border-slate-200">
+            {lista.map(c => (
+              <label key={c.id} className="flex items-center justify-between gap-2 px-3 py-1 text-sm hover:bg-slate-50">
+                <span className="flex items-center gap-2"><input type="checkbox" checked={sel.includes(c.id)} onChange={e => setSel(s => e.target.checked ? [...s, c.id] : s.filter(x => x !== c.id))} />{c.razao_social}</span>
+                <span className="num text-xs text-slate-400">{moeda(sm * c.percentual_honorario / 100)}</span>
+              </label>))}
+          </div>
+        </div>
+        <Campo rotulo="Competências (MM/AAAA, separadas por vírgula)" className="col-span-2"><input className="campo" value={comps} onChange={e => setComps(e.target.value)} placeholder="07/2026, 08/2026" /></Campo>
+        <Campo rotulo="Valor personalizado (vazio = % do salário mínimo)" className="col-span-2"><input className="campo" inputMode="decimal" value={personalizado} onChange={e => setPersonalizado(e.target.value)} /></Campo>
+        <p className="col-span-2 text-xs text-slate-500">Serão lançados até {sel.length * listaComps.length} honorário(s). Os que já existirem na mesma competência são mantidos.</p>
         <div className="col-span-2 mt-2 flex justify-end gap-2"><Botao type="button" variante="secundario" onClick={fechar}>Cancelar</Botao><Botao>Lançar</Botao></div>
       </form>
     </Modal>

@@ -32,6 +32,9 @@ export default function Recebimentos() {
   const [obs, setObs] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [ultimo, setUltimo] = useState<Recibo | null>(null)
+  const [comRecibo, setComRecibo] = useState(true)
+  const [integral, setIntegral] = useState(false)
+  const [valorRecebido, setValorRecebido] = useState('')
 
   const { dados: clientes } = useDados(() => todos<Cliente>((a, b) => supabase.from('clientes').select('*').order('razao_social').range(a, b)))
   const cliente = clientes?.find(c => c.id === clienteId)
@@ -54,7 +57,11 @@ export default function Recebimentos() {
     (clientes || []).filter(c => normaliza(`${c.razao_social} ${c.cnpj}`).includes(normaliza(busca))).slice(0, 8), [busca, clientes, cliente])
 
   const itens = [
-    ...(abertos || []).filter(l => sel[l.id]?.marcado).map(l => ({ tipo: l.tipo, id: l.id, valor: num(sel[l.id].valor), desconto: num(sel[l.id].desconto) })),
+    ...(abertos || []).filter(l => sel[l.id]?.marcado).map(l => {
+      const v = num(sel[l.id].valor), d = num(sel[l.id].desconto)
+      // Baixa integral: o que faltar para quitar vira desconto (item fica "Pago")
+      return { tipo: l.tipo, id: l.id, valor: v, desconto: integral ? Math.max(0, Math.round((l.saldo - v) * 100) / 100) : d }
+    }),
     ...avulsos.filter(a => a.descricao && num(a.valor) > 0).map(a => ({ tipo: 'avulso', descricao: a.descricao, valor: num(a.valor) })),
   ]
   const total = itens.reduce((s, i) => s + i.valor, 0)
@@ -62,6 +69,22 @@ export default function Recebimentos() {
   function marcar(l: Linha, v: boolean) {
     setSel(s => ({ ...s, [l.id]: v ? { marcado: true, valor: fmt(l.saldo), desconto: '' } : { ...s[l.id], marcado: false } }))
   }
+  /** Distribui o valor recebido pelos itens mais antigos primeiro */
+  function distribuir() {
+    let resto = num(valorRecebido)
+    if (resto <= 0) return avisar('Informe o valor recebido.', 'erro')
+    const ordem = [...(abertos || [])].sort((a, b) => (a.comp + a.venc).localeCompare(b.comp + b.venc))
+    const novo: Record<string, Sel> = {}
+    for (const l of ordem) {
+      if (resto <= 0.009) break
+      const v = Math.min(l.saldo, resto)
+      novo[l.id] = { marcado: true, valor: fmt(v), desconto: '' }
+      resto = Math.round((resto - v) * 100) / 100
+    }
+    setSel(novo)
+    if (resto > 0.009) avisar(`Sobrou ${moeda(resto)} além do saldo em aberto. Lance a diferença como serviço avulso, se for o caso.`, 'erro')
+  }
+
   function marcarTodos() {
     const todosMarcados = (abertos || []).every(l => sel[l.id]?.marcado)
     setSel(Object.fromEntries((abertos || []).map(l => [l.id, { marcado: !todosMarcados, valor: fmt(l.saldo), desconto: '' }])))
@@ -74,16 +97,19 @@ export default function Recebimentos() {
       const s = sel[l.id]
       if (s?.marcado && num(s.valor) + num(s.desconto) > l.saldo + 0.009) return avisar(`Valor acima do saldo em ${comp(l.comp)} (${moeda(l.saldo)}).`, 'erro')
     }
-    if (!confirm(`Registrar recebimento de ${moeda(total)} em ${data(dataPg)}?`)) return
+    if (!(modo === 'avulso' || comRecibo) && avulsos.some(a => a.descricao && num(a.valor) > 0)) return avisar('Serviço avulso só pode ser baixado com recibo.', 'erro')
+    const quitados = integral ? itens.filter(i => (i as { desconto?: number }).desconto).length : 0
+    if (!confirm(`Registrar baixa de ${moeda(total)} em ${data(dataPg)} ${modo === 'avulso' || comRecibo ? 'COM recibo' : 'SEM recibo'}?${quitados ? `\n\nBaixa integral: ${quitados} item(ns) serão quitados mesmo com valor menor que o saldo.` : ''}`)) return
     setSalvando(true)
     try {
       const r = ok(await supabase.rpc('registrar_recebimento', {
         p_cliente_id: modo === 'cliente' ? clienteId : null, p_data: dataPg, p_metodo: metodo, p_itens: itens,
         p_cliente_nome: modo === 'avulso' ? pagador.nome.trim().toUpperCase() : null,
         p_cliente_cnpj: modo === 'avulso' ? pagador.doc.replace(/\D/g, '') || null : null, p_observacao: obs || null,
+        p_com_recibo: modo === 'avulso' || comRecibo,
       })) as Recibo
-      setUltimo(r); avisar(`Recibo nº ${r.numero} emitido.`)
-      setSel({}); setAvulsos([]); setObs(''); setPagador({ nome: '', doc: '' }); recarregar()
+      setUltimo(r); avisar(r.numero ? `Recibo nº ${r.numero} emitido.` : 'Baixa registrada sem recibo.')
+      setSel({}); setAvulsos([]); setObs(''); setPagador({ nome: '', doc: '' }); setValorRecebido(''); setIntegral(false); recarregar()
     } catch (e) { avisar((e as Error).message, 'erro') } finally { setSalvando(false) }
   }
 
@@ -91,13 +117,18 @@ export default function Recebimentos() {
 
   return (
     <>
-      <Cabecalho titulo="Registrar recebimento" subtitulo="Dá baixa nos itens e emite o recibo numerado"
+      <Cabecalho titulo="Registrar recebimento" subtitulo="Baixa com recibo (numerado) ou sem recibo (ex.: boleto pago)"
         acoes={<div className="flex rounded-md border border-slate-300 bg-white p-0.5 text-sm">
           {(['cliente', 'avulso'] as const).map(m => <button key={m} onClick={() => trocarModo(m)}
             className={`rounded px-3 py-1.5 ${modo === m ? 'bg-marca-700 text-white' : 'text-slate-600'}`}>{m === 'cliente' ? 'Cliente cadastrado' : 'Recibo avulso'}</button>)}
         </div>} />
 
-      {ultimo && (
+      {ultimo && !ultimo.numero && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Baixa sem recibo registrada para {ultimo.cliente_nome} — {moeda(ultimo.valor)}. Para desfazer, use Baixas e Recibos.
+        </div>
+      )}
+      {ultimo?.numero && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           <span>Recibo <b>nº {ultimo.numero}</b> emitido para {ultimo.cliente_nome} — {moeda(ultimo.valor)}.</span>
           <span className="flex gap-2">
@@ -140,7 +171,7 @@ export default function Recebimentos() {
               {!abertos ? <Carregando /> : abertos.length === 0 ? <Vazio texto="Este cliente não tem nada em aberto." /> :
                 <div className="overflow-x-auto">
                   <table className="tabela">
-                    <thead><tr><th /><th>Item</th><th>Comp.</th><th>Venc.</th><th className="text-right">Saldo</th><th>Situação</th><th className="w-32">Receber (R$)</th><th className="w-28">Desconto</th></tr></thead>
+                    <thead><tr><th /><th>Item</th><th>Comp.</th><th>Venc.</th><th className="text-right">Saldo</th><th>Situação</th><th className="w-32">Receber (R$)</th><th className="w-28">{integral ? 'Desconto (integral)' : 'Desconto'}</th></tr></thead>
                     <tbody>{abertos.map(l => {
                       const s = sel[l.id]
                       return (
@@ -150,7 +181,7 @@ export default function Recebimentos() {
                           <td className="num">{comp(l.comp)}</td><td className="num">{data(l.venc)}</td>
                           <td className="num text-right">{moeda(l.saldo)}</td><td><Selo texto={l.situacao} /></td>
                           <td><input className="campo num py-1 text-right" disabled={!s?.marcado} value={s?.valor ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], valor: e.target.value } }))} /></td>
-                          <td><input className="campo num py-1 text-right" disabled={!s?.marcado} placeholder="0,00" value={s?.desconto ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], desconto: e.target.value } }))} /></td>
+                          <td><input className="campo num py-1 text-right" disabled={!s?.marcado || integral} placeholder="0,00" value={integral && s?.marcado ? fmt(Math.max(0, l.saldo - num(s.valor))) : s?.desconto ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], desconto: e.target.value } }))} /></td>
                         </tr>)
                     })}</tbody>
                   </table>
@@ -173,6 +204,26 @@ export default function Recebimentos() {
 
         <Cartao titulo="Pagamento" className="h-fit lg:sticky lg:top-4">
           <div className="space-y-3 p-4">
+            {modo === 'cliente' && clienteId && (
+              <div className="rounded-md bg-slate-50 p-3">
+                <Campo rotulo="Valor recebido (distribui do mais antigo)">
+                  <div className="flex gap-2">
+                    <input className="campo num text-right" placeholder="0,00" value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} />
+                    <Botao type="button" variante="secundario" onClick={distribuir}>Distribuir</Botao>
+                  </div>
+                </Campo>
+                <label className="mt-2 flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-1" checked={integral} onChange={e => setIntegral(e.target.checked)} />
+                  <span>Baixa integral <span className="block text-xs text-slate-500">Quita os itens marcados mesmo com valor menor; a diferença fica registrada como desconto.</span></span>
+                </label>
+              </div>
+            )}
+            {modo === 'cliente' && (
+              <div className="flex rounded-md border border-slate-300 p-0.5 text-sm">
+                {[true, false].map(v => <button key={String(v)} type="button" onClick={() => setComRecibo(v)}
+                  className={`flex-1 rounded px-3 py-1.5 ${comRecibo === v ? 'bg-marca-700 text-white' : 'text-slate-600'}`}>{v ? 'Com recibo' : 'Sem recibo'}</button>)}
+              </div>
+            )}
             <Campo rotulo="Data do pagamento"><input className="campo" type="date" value={dataPg} onChange={e => setDataPg(e.target.value)} /></Campo>
             <Campo rotulo="Forma de pagamento"><select className="campo" value={metodo} onChange={e => setMetodo(e.target.value)}>{METODOS.map(m => <option key={m}>{m}</option>)}</select></Campo>
             <Campo rotulo="Observação (sai no recibo)"><textarea className="campo" rows={2} value={obs} onChange={e => setObs(e.target.value)} /></Campo>
@@ -180,7 +231,7 @@ export default function Recebimentos() {
               <span className="text-sm text-slate-500">{itens.length} item(ns)</span>
               <span className="num text-2xl font-semibold text-marca-800">{moeda(total)}</span>
             </div>
-            <Botao className="w-full" disabled={salvando || !itens.length} onClick={registrar}>{salvando ? 'Registrando…' : 'Registrar e emitir recibo'}</Botao>
+            <Botao className="w-full" disabled={salvando || !itens.length} onClick={registrar}>{salvando ? 'Registrando…' : modo === 'avulso' || comRecibo ? 'Registrar e emitir recibo' : 'Registrar baixa sem recibo'}</Botao>
           </div>
         </Cartao>
       </div>
