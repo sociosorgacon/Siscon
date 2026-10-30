@@ -111,12 +111,17 @@ create trigger t_honorarios before update on honorarios for each row execute fun
 create trigger t_despesas   before update on despesas   for each row execute function set_updated_at();
 
 -- Segurança: só usuários logados (cadastro público desativado no Supabase)
-do $$
-declare t text;
-begin
-  foreach t in array array['configuracoes','clientes','honorarios','despesas','recibos','recibo_itens'] loop
-    execute format('alter table %I enable row level security', t);
-    execute format('create policy "logados" on %I for all to authenticated using (true) with check (true)', t);
-  end loop;
-end $$;
+alter table configuracoes enable row level security;
+alter table clientes enable row level security;
+alter table honorarios enable row level security;
+alter table despesas enable row level security;
+alter table recibos enable row level security;
+alter table recibo_itens enable row level security;
+
+create policy "logados" on configuracoes for all to authenticated using (true) with check (true);
+create policy "logados" on clientes for all to authenticated using (true) with check (true);
+create policy "logados" on honorarios for all to authenticated using (true) with check (true);
+create policy "logados" on despesas for all to authenticated using (true) with check (true);
+create policy "logados" on recibos for all to authenticated using (true) with check (true);
+create policy "logados" on recibo_itens for all to authenticated using (true) with check (true);
 grant usage on sequence recibo_numero_seq to authenticated;
