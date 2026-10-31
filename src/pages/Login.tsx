@@ -4,10 +4,10 @@ import { Botao, Campo } from '../components/ui'
 
 function Moldura({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-marca-900 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-marca-700 to-marca-900 p-4">
       <div className="w-full max-w-sm rounded-xl bg-white p-7 shadow-2xl">
-        <p className="text-2xl font-bold text-marca-800">Siscon</p>
-        <p className="mb-6 text-sm text-slate-500">Sistema de honorários · Orgacon Contabilidade</p>
+        <img src="/logo.png" alt="Orgacon Consultoria Contábil" className="mx-auto mb-3 w-52" />
+        <p className="mb-6 text-center text-xs font-medium tracking-wide text-cinza">SISCON · SISTEMA DE HONORÁRIOS</p>
         {children}
       </div>
     </div>

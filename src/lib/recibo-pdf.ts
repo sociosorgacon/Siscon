@@ -1,7 +1,8 @@
 import type { Recibo } from './supabase'
 import { moeda, data, doc, comp } from './format'
 
-export type Escritorio = { nome: string; cnpj: string; endereco: string; cidade: string; telefone: string }
+import { cabecalho, rodape, entregar, nomeArquivo, AZUL, CINZA, FUNDO, type Escritorio } from './pdf-base'
+export type { Escritorio }
 
 const unidades = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze',
   'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove']
@@ -38,29 +39,13 @@ export async function gerarReciboPdf(r: Recibo, esc: Escritorio, abrir = true) {
   const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
   const L = 18, W = 210 - 2 * L
-  let y = 20
-
-  // Cabeçalho do escritório
-  pdf.setFillColor(15, 61, 62); pdf.rect(0, 0, 210, 6, 'F')
-  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(15); pdf.setTextColor(15, 61, 62)
-  pdf.text(esc.nome, L, y)
-  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(90)
-  const linhaEsc = [esc.cnpj && `CNPJ ${esc.cnpj}`, esc.endereco, esc.telefone].filter(Boolean).join('   |   ')
-  if (linhaEsc) pdf.text(linhaEsc, L, y + 5)
-
-  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(18); pdf.setTextColor(30)
-  pdf.text('RECIBO', 210 - L, y, { align: 'right' })
-  pdf.setFontSize(10); pdf.setFont('helvetica', 'normal')
-  pdf.text(r.numero ? `Nº ${String(r.numero).padStart(5, '0')}` : 'Sem número', 210 - L, y + 6, { align: 'right' })
-
-  y += 14
-  pdf.setDrawColor(220); pdf.line(L, y, 210 - L, y)
+  let y = await cabecalho(pdf, esc, 'RECIBO', r.numero ? `Nº ${String(r.numero).padStart(5, '0')}` : 'Sem número')
 
   // Valor em destaque
-  y += 10
-  pdf.setFillColor(238, 246, 245); pdf.roundedRect(L, y - 6, W, 14, 2, 2, 'F')
-  pdf.setFontSize(9); pdf.setTextColor(90); pdf.text('VALOR RECEBIDO', L + 4, y)
-  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(16); pdf.setTextColor(15, 61, 62)
+  y += 4
+  pdf.setFillColor(...FUNDO); pdf.roundedRect(L, y - 6, W, 14, 2, 2, 'F')
+  pdf.setFontSize(9); pdf.setTextColor(...CINZA); pdf.text('VALOR RECEBIDO', L + 4, y + 2)
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(16); pdf.setTextColor(...AZUL)
   pdf.text(moeda(r.valor), 210 - L - 4, y + 3, { align: 'right' })
 
   // Texto do recibo
@@ -72,7 +57,7 @@ export async function gerarReciboPdf(r: Recibo, esc: Escritorio, abrir = true) {
   pdf.text(linhas, L, y); y += linhas.length * 5.2 + 6
 
   // Itens
-  pdf.setFontSize(8.5); pdf.setTextColor(110); pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(8.5); pdf.setTextColor(...AZUL); pdf.setFont('helvetica', 'bold')
   pdf.text('DESCRIÇÃO', L, y); pdf.text('COMPETÊNCIA', L + W - 62, y); pdf.text('VALOR', 210 - L, y, { align: 'right' })
   y += 2; pdf.setDrawColor(200); pdf.line(L, y, 210 - L, y); y += 5
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(30)
@@ -85,7 +70,7 @@ export async function gerarReciboPdf(r: Recibo, esc: Escritorio, abrir = true) {
     if (y > 250) { pdf.addPage(); y = 20 }
   }
   pdf.line(L, y - 1, 210 - L, y - 1); y += 5
-  pdf.setFont('helvetica', 'bold'); pdf.text('TOTAL', L, y); pdf.text(moeda(r.valor), 210 - L, y, { align: 'right' })
+  pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...AZUL); pdf.text('TOTAL', L, y); pdf.text(moeda(r.valor), 210 - L, y, { align: 'right' })
 
   y += 10
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(80)
@@ -101,18 +86,15 @@ export async function gerarReciboPdf(r: Recibo, esc: Escritorio, abrir = true) {
   y += 24
   pdf.setDrawColor(120); pdf.line(105 - 40, y, 105 + 40, y)
   pdf.setFontSize(9.5); pdf.text(esc.nome, 105, y + 5, { align: 'center' })
+  if (esc.cnpj) { pdf.setFontSize(8.5); pdf.setTextColor(...CINZA); pdf.text(`CNPJ ${esc.cnpj}`, 105, y + 9.5, { align: 'center' }) }
 
   if (r.cancelado) {
     pdf.setTextColor(220, 38, 38); pdf.setFontSize(48); pdf.setFont('helvetica', 'bold')
     pdf.text('CANCELADO', 105, 150, { align: 'center', angle: 30 })
   }
 
-  pdf.setFontSize(7.5); pdf.setTextColor(150); pdf.setFont('helvetica', 'normal')
-  pdf.text(`Emitido pelo Siscon em ${data(new Date().toISOString())}`, L, 287)
-
-  const nome = `Recibo_${r.numero ? String(r.numero).padStart(5, '0') : 'sn'}_${r.cliente_nome.replace(/[^\w]+/g, '_').slice(0, 40)}.pdf`
-  if (abrir) window.open(pdf.output('bloburl'), '_blank')
-  else pdf.save(nome)
+  rodape(pdf, `Emitido pelo Siscon em ${data(new Date().toISOString())}`)
+  entregar(pdf, `Recibo_${r.numero ? String(r.numero).padStart(5, '0') : 'sn'}_${nomeArquivo(r.cliente_nome)}.pdf`, abrir)
 }
 
 /** Busca o recibo com os itens e abre o PDF */

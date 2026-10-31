@@ -1,30 +1,34 @@
 import { Fragment, useMemo, useState } from 'react'
 import { supabase, todos, type Honorario, type Recibo, type Despesa } from '../lib/supabase'
-import { useApp, useDados } from '../lib/app'
+import { useApp, useDados, escritorioDe, pixDe } from '../lib/app'
+import { gerarExtratoPdf } from '../lib/extrato-pdf'
+import { pixCopiaECola } from '../lib/pix'
 import { moeda, data, comp, compParaIso, ultimasCompetencias } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
 import { mesSeguinte } from './Painel'
 import { Botao, Cabecalho, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
 
 type Aba = 'aberto' | 'inadimplencia' | 'recebido' | 'competencias'
-type Item = { tipo: 'Honorário' | 'Despesa'; cliente_id: string; cliente: string; telefone: string | null; descricao: string; competencia: string; original: number; juros: number; pago: number; saldo: number }
-type Grupo = { id: string; cliente: string; telefone: string | null; itens: Item[]; total: number }
+type Item = { tipo: 'Honorário' | 'Despesa'; cliente_id: string; cliente: string; cnpj: string; telefone: string | null; descricao: string; competencia: string; original: number; juros: number; pago: number; saldo: number }
+type Grupo = { id: string; cliente: string; cnpj: string; telefone: string | null; itens: Item[]; total: number }
 
 const agrupar = (itens: Item[]): Grupo[] => {
   const m = new Map<string, Grupo>()
   for (const i of itens) {
-    const g = m.get(i.cliente_id) || { id: i.cliente_id, cliente: i.cliente, telefone: i.telefone, itens: [], total: 0 }
+    const g = m.get(i.cliente_id) || { id: i.cliente_id, cliente: i.cliente, cnpj: i.cnpj, telefone: i.telefone, itens: [], total: 0 }
     g.itens.push(i); g.total += i.saldo; m.set(i.cliente_id, g)
   }
   for (const g of m.values()) g.itens.sort((a, b) => a.competencia.localeCompare(b.competencia))
   return [...m.values()].sort((a, b) => b.total - a.total)
 }
 
-function linkWhats(g: Grupo, nomeEscritorio: string) {
+function linkWhats(g: Grupo, nomeEscritorio: string, pix: { chave: string; nome: string; cidade: string }) {
   const fone = (g.telefone || '').replace(/\D/g, '')
   if (fone.length < 10) return null
   const linhas = g.itens.map(i => `• ${i.tipo === 'Honorário' ? 'Honorários' : i.descricao} ${comp(i.competencia)}: ${moeda(i.saldo)}`).join('\n')
-  const msg = `Olá! Aqui é da ${nomeEscritorio}. Consta em aberto:\n${linhas}\n*Total: ${moeda(g.total)}*\nQualquer dúvida, estamos à disposição.`
+  const total = Math.round(g.total * 100) / 100
+  const pixTxt = pix.chave ? `\n\nPara pagar via Pix, copie o código abaixo no app do seu banco (valor já preenchido):\n${pixCopiaECola({ ...pix, valor: total })}` : ''
+  const msg = `Olá! Aqui é da ${nomeEscritorio}. Consta em aberto:\n${linhas}\n*Total: ${moeda(total)}*${pixTxt}\n\nQualquer dúvida, estamos à disposição.`
   return `https://wa.me/55${fone.replace(/^55/, '')}?text=${encodeURIComponent(msg)}`
 }
 
@@ -48,8 +52,8 @@ export default function Relatorios() {
   })
 
   const itensAbertos = useMemo<Item[]>(() => !dados ? [] : [
-    ...dados.hon.filter(h => h.saldo > 0).map(h => ({ tipo: 'Honorário' as const, cliente_id: h.cliente_id, cliente: h.cliente_nome, telefone: h.cliente_telefone, descricao: 'Honorários', competencia: h.competencia, original: h.valor_original, juros: h.juros_calc, pago: h.valor_pago_acumulado, saldo: h.saldo })),
-    ...dados.des.filter(d => d.saldo > 0).map(d => ({ tipo: 'Despesa' as const, cliente_id: d.cliente_id, cliente: d.cliente_nome, telefone: d.cliente_telefone, descricao: d.descricao, competencia: d.competencia, original: d.valor, juros: 0, pago: d.valor_pago, saldo: d.saldo })),
+    ...dados.hon.filter(h => h.saldo > 0).map(h => ({ tipo: 'Honorário' as const, cliente_id: h.cliente_id, cliente: h.cliente_nome, cnpj: h.cliente_cnpj, telefone: h.cliente_telefone, descricao: 'Honorários', competencia: h.competencia, original: h.valor_original, juros: h.juros_calc, pago: h.valor_pago_acumulado, saldo: h.saldo })),
+    ...dados.des.filter(d => d.saldo > 0).map(d => ({ tipo: 'Despesa' as const, cliente_id: d.cliente_id, cliente: d.cliente_nome, cnpj: d.cliente_cnpj, telefone: d.cliente_telefone, descricao: d.descricao, competencia: d.competencia, original: d.valor, juros: 0, pago: d.valor_pago, saldo: d.saldo })),
   ], [dados])
 
   const ateComp = useMemo(() => agrupar(itensAbertos.filter(i => i.competencia <= iso)), [itensAbertos, iso])
@@ -65,6 +69,13 @@ export default function Relatorios() {
     }
     return [...m.values()].sort((a, b) => b.comp.localeCompare(a.comp))
   }, [dados])
+
+  async function extrato(g: Grupo) {
+    try {
+      await gerarExtratoPdf({ cliente: g.cliente, cnpj: g.cnpj, itens: g.itens.map(i => ({ ...i, descricao: i.tipo === 'Honorário' ? 'Honorários contábeis' : i.descricao })) },
+        escritorioDe(config), pixDe(config))
+    } catch (e) { avisar('Erro ao gerar o extrato: ' + (e as Error).message, 'erro') }
+  }
 
   async function exportar() {
     const colItens = [{ titulo: 'Cliente', chave: 'cliente', largura: 46 }, { titulo: 'Tipo', chave: 'tipo', largura: 11 }, { titulo: 'Descrição', chave: 'descricao', largura: 28 },
@@ -116,14 +127,15 @@ export default function Relatorios() {
               <div className="overflow-x-auto"><table className="tabela">
                 <thead><tr><th>Cliente</th><th className="text-right">Itens</th><th className="text-right">Total em aberto</th><th className="print:hidden" /></tr></thead>
                 <tbody>{grupos.map(g => {
-                  const w = linkWhats(g, config.escritorio_nome)
+                  const w = linkWhats(g, config.escritorio_nome, pixDe(config))
                   return (
                     <Fragment key={g.id}>
                       <tr className="cursor-pointer" onClick={() => setAberto(aberto === g.id ? null : g.id)}>
                         <td className="max-w-md truncate"><span className="mr-1 text-slate-400">{aberto === g.id ? '▾' : '▸'}</span>{g.cliente}</td>
                         <td className="num text-right">{g.itens.length}</td>
                         <td className="num text-right font-medium text-red-700">{moeda(g.total)}</td>
-                        <td className="text-right print:hidden" onClick={e => e.stopPropagation()}>
+                        <td className="space-x-3 whitespace-nowrap text-right print:hidden" onClick={e => e.stopPropagation()}>
+                          <Botao variante="link" onClick={() => extrato(g)}>Extrato c/ Pix</Botao>
                           {w ? <a href={w} target="_blank" rel="noreferrer" className="text-sm text-emerald-700 hover:underline">WhatsApp</a> : <span className="text-xs text-slate-300">sem telefone</span>}
                         </td>
                       </tr>

@@ -9,6 +9,7 @@ const descricoes: Partial<Record<keyof Config, string>> = {
   competencia_atual: 'Competência atual para geração de honorários e juros', escritorio_nome: 'Nome do escritório (recibo)',
   escritorio_cnpj: 'CNPJ do escritório (recibo)', escritorio_endereco: 'Endereço do escritório (recibo)',
   escritorio_cidade: 'Cidade/UF (local do recibo)', escritorio_telefone: 'Telefone do escritório (recibo)',
+  pix_chave: 'Chave Pix para o QR Code dos extratos',
 }
 
 export default function Configuracoes() {
@@ -66,6 +67,8 @@ export default function Configuracoes() {
             <Campo rotulo="Telefone">{campo('escritorio_telefone')}</Campo>
             <Campo rotulo="Endereço" className="col-span-2">{campo('escritorio_endereco')}</Campo>
             <Campo rotulo="Cidade/UF">{campo('escritorio_cidade')}</Campo>
+            <Campo rotulo="Chave Pix (vazio = CNPJ)">{campo('pix_chave', { placeholder: f.escritorio_cnpj })}</Campo>
+            <p className="col-span-2 text-xs text-slate-500">O QR Code Pix dos extratos é gerado com o valor exato do débito do cliente. Confira se a chave está cadastrada na conta que recebe.</p>
           </div>
         </Cartao>
         <div className="lg:col-span-2 flex justify-end"><Botao disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar configurações'}</Botao></div>
