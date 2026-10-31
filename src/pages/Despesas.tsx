@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Despesa } from '../lib/supabase'
-import { useApp, useDados } from '../lib/app'
+import { useApp, useDados, descricoesPadrao } from '../lib/app'
 import { moeda, data, comp, compParaIso, hojeIso, normaliza } from '../lib/format'
 import { Abas, Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Selo, Vazio, useAviso } from '../components/ui'
 
@@ -16,9 +16,12 @@ const somaMes = (mmaaaa: string, n: number) => {
 
 export default function Despesas() {
   const [aba, setAba] = useState<'lancamentos' | 'fixas'>('lancamentos')
+  const { config } = useApp()
   const { dados: clientes } = useDados(() => todos<ClienteMin>((a, b) => supabase.from('clientes').select('id, razao_social, status').order('razao_social').range(a, b)))
   return (
     <>
+      {/* Sugestões do campo Descrição: lista padronizada de Configurações (pode-se digitar outra) */}
+      <datalist id="descricoes">{descricoesPadrao(config).map(d => <option key={d} value={d} />)}</datalist>
       <Abas abas={[['lancamentos', 'Despesas extras'], ['fixas', 'Despesas fixas (recorrentes)']] as const} atual={aba} mudar={setAba} />
       {aba === 'lancamentos' ? <Lancamentos clientes={clientes || []} /> : <Fixas clientes={clientes || []} />}
     </>
@@ -34,7 +37,6 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
   const lista = useMemo(() => (dados || []).filter(d =>
     (status === '' || (status === 'abertas' ? d.saldo > 0 : d.status === status)) &&
     (!busca || normaliza(`${d.cliente_nome} ${d.descricao}`).includes(normaliza(busca)))), [dados, status, busca])
-  const descricoes = useMemo(() => [...new Set((dados || []).map(d => d.descricao.replace(/\s*\(\d+\/\d+\)$/, '')))].sort(), [dados])
 
   return (
     <>
@@ -68,7 +70,6 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
             </table>
           </div>}
       </Cartao>
-      <datalist id="descricoes">{descricoes.map(d => <option key={d} value={d} />)}</datalist>
       {edit && (edit.id
         ? <EditarDespesa d={edit as Despesa} clientes={clientes} fechar={() => setEdit(null)} salvo={() => { setEdit(null); recarregar() }} />
         : <NovaDespesa clientes={clientes} fechar={() => setEdit(null)} salvo={() => { setEdit(null); recarregar() }} />)}
@@ -208,7 +209,7 @@ function Fixas({ clientes }: { clientes: ClienteMin[] }) {
         {edit && <form onSubmit={salvar} className="grid grid-cols-2 gap-3">
           <Campo rotulo="Cliente" className="col-span-2"><select className="campo" required value={edit.cliente_id || ''} onChange={e => setEdit({ ...edit, cliente_id: e.target.value })}>
             <option value="">Selecione…</option>{clientes.filter(c => c.status === 'Ativo').map(c => <option key={c.id} value={c.id}>{c.razao_social}</option>)}</select></Campo>
-          <Campo rotulo="Descrição" className="col-span-2"><input className="campo" required value={edit.descricao || ''} onChange={e => setEdit({ ...edit, descricao: e.target.value })} /></Campo>
+          <Campo rotulo="Descrição" className="col-span-2"><input className="campo" list="descricoes" required value={edit.descricao || ''} onChange={e => setEdit({ ...edit, descricao: e.target.value })} /></Campo>
           <Campo rotulo="Valor mensal"><input className="campo" type="number" step="0.01" min="0.01" required value={edit.valor || ''} onChange={e => setEdit({ ...edit, valor: Number(e.target.value) })} /></Campo>
           <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={!!edit.ativa} onChange={e => setEdit({ ...edit, ativa: e.target.checked })} /> Ativa</label>
           <Campo rotulo="Observações" className="col-span-2"><textarea className="campo" rows={2} value={edit.observacoes || ''} onChange={e => setEdit({ ...edit, observacoes: e.target.value })} /></Campo>

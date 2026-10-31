@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase, ok, todos } from '../lib/supabase'
-import { useApp, type Config } from '../lib/app'
+import { useApp, descricoesPadrao, type Config } from '../lib/app'
 import { hojeIso } from '../lib/format'
 import { Botao, Cabecalho, Campo, Cartao, useAviso } from '../components/ui'
 
@@ -10,6 +10,7 @@ const descricoes: Partial<Record<keyof Config, string>> = {
   escritorio_cnpj: 'CNPJ do escritório (recibo)', escritorio_endereco: 'Endereço do escritório (recibo)',
   escritorio_cidade: 'Cidade/UF (local do recibo)', escritorio_telefone: 'Telefone do escritório (recibo)',
   pix_chave: 'Chave Pix para o QR Code dos extratos',
+  descricoes_despesas: 'Descrições padronizadas de despesas extras (uma por linha)',
 }
 
 export default function Configuracoes() {
@@ -17,6 +18,15 @@ export default function Configuracoes() {
   const avisar = useAviso()
   const [f, setF] = useState<Config>(config)
   const [salvando, setSalvando] = useState(false)
+  const [novaDesc, setNovaDesc] = useState('')
+  const listaDesc = descricoesPadrao(f)
+  const mudarDesc = (l: string[]) => setF({ ...f, descricoes_despesas: l.join('\n') })
+  function adicionarDesc() {
+    const d = novaDesc.trim().replace(/\s+/g, ' ')
+    if (!d) return
+    if (listaDesc.some(x => x.toLowerCase() === d.toLowerCase())) return avisar('Essa descrição já está na lista.', 'erro')
+    mudarDesc([...listaDesc, d].sort((a, b) => a.localeCompare(b, 'pt-BR'))); setNovaDesc('')
+  }
   useEffect(() => setF(config), [config])
   const campo = (k: keyof Config, props: React.InputHTMLAttributes<HTMLInputElement> = {}) =>
     <input className="campo" value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} {...props} />
@@ -69,6 +79,23 @@ export default function Configuracoes() {
             <Campo rotulo="Cidade/UF">{campo('escritorio_cidade')}</Campo>
             <Campo rotulo="Chave Pix (vazio = CNPJ)">{campo('pix_chave', { placeholder: f.escritorio_cnpj })}</Campo>
             <p className="col-span-2 text-xs text-slate-500">O QR Code Pix dos extratos é gerado com o valor exato do débito do cliente. Confira se a chave está cadastrada na conta que recebe.</p>
+          </div>
+        </Cartao>
+        <Cartao titulo="Descrições de despesas extras">
+          <div className="grid gap-3 p-4">
+            <p className="text-xs text-slate-500">Opções que aparecem no campo Descrição ao lançar uma despesa (ainda é possível digitar outra). Clique em "Salvar configurações" para gravar.</p>
+            <div className="flex gap-2">
+              <input className="campo" placeholder="Nova descrição…" value={novaDesc} onChange={e => setNovaDesc(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarDesc() } }} />
+              <Botao type="button" variante="secundario" onClick={adicionarDesc}>Adicionar</Botao>
+            </div>
+            <ul className="max-h-72 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+              {listaDesc.length === 0 && <li className="px-3 py-2 text-sm text-slate-400">Nenhuma descrição cadastrada.</li>}
+              {listaDesc.map(d => <li key={d} className="flex items-center justify-between px-3 py-2 text-sm">
+                <span>{d}</span>
+                <Botao type="button" variante="link" onClick={() => mudarDesc(listaDesc.filter(x => x !== d))}>Remover</Botao>
+              </li>)}
+            </ul>
           </div>
         </Cartao>
         <div className="lg:col-span-2 flex justify-end"><Botao disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar configurações'}</Botao></div>

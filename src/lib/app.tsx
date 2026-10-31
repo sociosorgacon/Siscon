@@ -3,11 +3,15 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
 export type Config = { competencia_atual: string; salario_minimo: string; taxa_juros: string; vigencia_salario: string
-  escritorio_nome: string; escritorio_cnpj: string; escritorio_endereco: string; escritorio_cidade: string; escritorio_telefone: string; pix_chave: string }
+  escritorio_nome: string; escritorio_cnpj: string; escritorio_endereco: string; escritorio_cidade: string; escritorio_telefone: string; pix_chave: string
+  descricoes_despesas: string }
 type Ctx = { sessao: Session | null; config: Config; recarregarConfig: () => Promise<void> }
 
 const vazio: Config = { competencia_atual: '', salario_minimo: '0', taxa_juros: '1.55', vigencia_salario: '',
-  escritorio_nome: 'Orgacon Contabilidade', escritorio_cnpj: '', escritorio_endereco: '', escritorio_cidade: 'Iúna/ES', escritorio_telefone: '', pix_chave: '' }
+  escritorio_nome: 'Orgacon Contabilidade', escritorio_cnpj: '', escritorio_endereco: '', escritorio_cidade: 'Iúna/ES', escritorio_telefone: '', pix_chave: '',
+  // Lista padronizada (uma por linha). Valor inicial = lista do Base44, usado até ser salva em Configurações.
+  descricoes_despesas: ['Abertura de Empresa', 'Alteração Contratual', 'Certificado Digital PF', 'Certificado Digital PJ',
+    'IRPF 2025/2026', 'Preenchimento NFe/NFSe', 'Xerox e Impressões'].join('\n') }
 const AppCtx = createContext<Ctx>({ sessao: null, config: vazio, recarregarConfig: async () => {} })
 export const useApp = () => useContext(AppCtx)
 
@@ -42,6 +46,14 @@ export function useDados<T>(carregar: () => Promise<T>, deps: unknown[] = []) {
   }, deps)
   useEffect(() => { recarregar() }, [recarregar])
   return { dados, erro, recarregar }
+}
+
+/** Descrições padronizadas de despesas extras (aceita texto uma-por-linha ou JSON) */
+export function descricoesPadrao(c: Config): string[] {
+  const v = (c.descricoes_despesas || '').trim()
+  if (!v) return []
+  try { const j = JSON.parse(v); if (Array.isArray(j)) return j.map(String).map(s => s.trim()).filter(Boolean) } catch { /* texto simples */ }
+  return v.split('\n').map(s => s.trim()).filter(Boolean)
 }
 
 export const escritorioDe = (c: Config) => ({
