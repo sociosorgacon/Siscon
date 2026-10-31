@@ -29,6 +29,7 @@ export default function Painel() {
 
   // Saldo da conta Asaas (Edge Function); falha não atrapalha o resto do Painel
   const asaas = useDados(() => chamarAsaas<{ saldo: number }>('saldo'))
+  const pendAsaas = useDados(async () => (await supabase.from('asaas_eventos').select('id', { count: 'exact', head: true }).in('status', ['pendente', 'erro'])).count || 0)
 
   const r = useMemo(() => {
     if (!dados || !c) return null
@@ -63,6 +64,8 @@ export default function Painel() {
           {comps.filter(x => x !== config.competencia_atual).map(m => <option key={m} value={m}>Competência {m}</option>)}
         </select>} />
       {!r ? <Carregando /> : <>
+        {!!pendAsaas.dados && <Link to="/asaas" className="mb-4 block rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100">
+          {pendAsaas.dados} pagamento(s) do Asaas aguardando conferência para a baixa automática. Clique para ver.</Link>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <Indicador icone="calendario" rotulo="A receber no mês" valor={moeda(r.aReceber)} detalhe={`Saldo da competência ${c} (honorários + despesas)`} />
           <Indicador icone="ok" rotulo="Recebido no mês" valor={moeda(r.recebido)} tom="ok" detalhe={`Baixas em ${mR}/${aR}, com e sem recibo`} />

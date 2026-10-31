@@ -1,10 +1,10 @@
-import { useMemo } from 'react'
-import { supabase, todos, type Cliente, type Honorario, type Despesa } from '../lib/supabase'
+import { useMemo, useState } from 'react'
+import { supabase, ok, todos, type Cliente, type Honorario, type Despesa } from '../lib/supabase'
 import { useApp, useDados } from '../lib/app'
 import { chamarAsaas, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/asaas'
-import { moeda, data, comp, doc } from '../lib/format'
+import { moeda, data, comp, doc, normaliza } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
-import { Botao, Cabecalho, Cartao, Carregando, Indicador, Selo, Vazio, useAviso } from '../components/ui'
+import { Abas, Botao, Cabecalho, Campo, Cartao, Carregando, Indicador, Modal, Selo, Vazio, useAviso } from '../components/ui'
 
 const dig = (s: string | null | undefined) => (s || '').replace(/\D/g, '')
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -14,7 +14,102 @@ const compDoVenc = (venc: string) => {
   return m === 1 ? `${a - 1}-12-01` : `${a}-${String(m - 1).padStart(2, '0')}-01`
 }
 
+type Evento = { id: string; evento: string; payment_id: string | null; customer_id: string | null; valor: number | null; vencimento: string | null
+  data_pagamento: string | null; descricao: string | null; status: 'processado' | 'pendente' | 'ignorado' | 'erro'; mensagem: string | null
+  recibo_id: string | null; recebido_em: string }
+const NOMES_EVENTO: Record<string, string> = { PAYMENT_RECEIVED: 'Pagamento recebido', PAYMENT_CONFIRMED: 'Pagamento confirmado',
+  PAYMENT_REFUNDED: 'Estorno', PAYMENT_RECEIVED_IN_CASH_UNDONE: 'Recebimento desfeito', PAYMENT_CHARGEBACK_DONE: 'Chargeback' }
+const SELO_STATUS: Record<Evento['status'], string> = { processado: 'Pago', pendente: 'Pago Parcial', erro: 'Atrasado', ignorado: 'Inativo' }
+const ROTULO_STATUS: Record<Evento['status'], string> = { processado: 'Baixado', pendente: 'Conferir', erro: 'Erro', ignorado: 'Ignorado' }
+
 export default function Asaas() {
+  const [aba, setAba] = useState<'baixas' | 'conferencia'>('baixas')
+  return (
+    <>
+      <Abas abas={[['baixas', 'Baixas automáticas'], ['conferencia', 'Conferência de assinaturas']] as const} atual={aba} mudar={setAba} />
+      {aba === 'baixas' ? <Baixas /> : <Conferencia />}
+    </>
+  )
+}
+
+/** Pagamentos avisados pelo Asaas (webhook) e o resultado da baixa automática */
+function Baixas() {
+  const avisar = useAviso()
+  const [so, setSo] = useState<'conferir' | 'todos'>('conferir')
+  const [vinc, setVinc] = useState<Evento | null>(null)
+  const [clienteSel, setClienteSel] = useState('')
+  const [busca, setBusca] = useState('')
+  const { dados, recarregar } = useDados(async () => {
+    const [ev, cli] = await Promise.all([
+      todos<Evento>((a, b) => supabase.from('asaas_eventos').select('id, evento, payment_id, customer_id, valor, vencimento, data_pagamento, descricao, status, mensagem, recibo_id, recebido_em')
+        .order('recebido_em', { ascending: false }).range(a, b)),
+      todos<Cliente>((a, b) => supabase.from('clientes').select('*').order('razao_social').range(a, b)),
+    ])
+    return { ev, cli }
+  })
+  const nomeDe = (customer: string | null) => dados?.cli.find(c => customer && c.asaas_customer_id === customer)?.razao_social
+  const lista = (dados?.ev || []).filter(e => so === 'todos' || e.status === 'pendente' || e.status === 'erro')
+  const nConferir = (dados?.ev || []).filter(e => e.status === 'pendente' || e.status === 'erro').length
+
+  async function acao(fn: () => PromiseLike<{ data: unknown; error: { message: string } | null }>, msg: string) {
+    try { ok(await fn()); avisar(msg); recarregar() } catch (e) { avisar((e as Error).message, 'erro') }
+  }
+  async function vincular() {
+    if (!vinc?.customer_id || !clienteSel) return
+    await acao(() => supabase.rpc('asaas_vincular_cliente', { p_customer_id: vinc.customer_id, p_cliente_id: clienteSel }),
+      'Cliente vinculado. Os pagamentos pendentes dele foram reprocessados.')
+    setVinc(null); setClienteSel(''); setBusca('')
+  }
+  const opcoes = (dados?.cli || []).filter(c => !busca || normaliza(`${c.razao_social} ${c.cnpj}`).includes(normaliza(busca)))
+
+  return (
+    <>
+      <Cabecalho titulo="Baixas automáticas do Asaas" subtitulo="Boletos pagos no Asaas viram baixa sem recibo, com a data em que o cliente pagou"
+        acoes={<><select className="campo w-56" value={so} onChange={e => setSo(e.target.value as typeof so)}>
+          <option value="conferir">Só os que precisam de conferência</option><option value="todos">Todos os avisos</option></select>
+          <Botao variante="secundario" onClick={recarregar}>Atualizar</Botao></>} />
+      {nConferir > 0 && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        {nConferir} pagamento(s) do Asaas aguardando conferência. Na primeira vez de cada cliente, use "Vincular cliente": depois disso as baixas dele são automáticas.</div>}
+      <Cartao>
+        {!dados ? <Carregando /> : lista.length === 0 ? <Vazio texto={so === 'conferir' ? 'Nada aguardando conferência.' : 'Nenhum aviso do Asaas recebido ainda.'} /> :
+          <div className="overflow-x-auto"><table className="tabela">
+            <thead><tr><th>Recebido em</th><th>Evento</th><th>Cliente</th><th>Venc.</th><th>Pago em</th><th className="text-right">Valor</th><th>Situação</th><th /></tr></thead>
+            <tbody>{lista.map(e => <tr key={e.id}>
+              <td className="num">{data(e.recebido_em)}</td>
+              <td>{NOMES_EVENTO[e.evento] || e.evento}</td>
+              <td className="max-w-xs truncate" title={e.descricao || ''}>{nomeDe(e.customer_id) || <span className="text-xs text-slate-400">{e.customer_id || '—'} (sem vínculo)</span>}</td>
+              <td className="num">{data(e.vencimento)}</td><td className="num">{data(e.data_pagamento)}</td>
+              <td className="num text-right">{moeda(e.valor)}</td>
+              <td className="max-w-sm"><Selo texto={SELO_STATUS[e.status]} /> <span className="ml-1 text-xs font-medium">{ROTULO_STATUS[e.status]}</span>
+                {e.mensagem && <span className="block truncate text-xs text-slate-500" title={e.mensagem}>{e.mensagem}</span>}</td>
+              <td className="space-x-3 whitespace-nowrap pr-5 text-right">
+                {(e.status === 'pendente' || e.status === 'erro') && <>
+                  {e.customer_id && !nomeDe(e.customer_id) && <Botao variante="link" onClick={() => setVinc(e)}>Vincular cliente</Botao>}
+                  <Botao variante="link" onClick={() => acao(() => supabase.rpc('asaas_processar', { p_id: e.id }), 'Reprocessado.')}>Reprocessar</Botao>
+                  <Botao variante="link" className="!text-slate-500" onClick={() => confirm('Ignorar este aviso? Use quando a baixa já foi feita manualmente.') &&
+                    acao(() => supabase.from('asaas_eventos').update({ status: 'ignorado', mensagem: 'Ignorado manualmente' }).eq('id', e.id), 'Aviso ignorado.')}>Ignorar</Botao>
+                </>}
+              </td>
+            </tr>)}</tbody>
+          </table></div>}
+      </Cartao>
+      <Modal titulo="Vincular cliente do Asaas" aberto={!!vinc} fechar={() => setVinc(null)}>
+        <p className="mb-3 text-sm text-slate-600">Cliente do Asaas <b>{vinc?.customer_id}</b>{vinc?.descricao ? <> · boleto "{vinc.descricao}"</> : null} · {moeda(vinc?.valor)}, venc. {data(vinc?.vencimento)}.
+          Escolha o cliente do Siscon. Os próximos pagamentos dele serão baixados automaticamente.</p>
+        <Campo rotulo="Buscar"><input className="campo" placeholder="Nome ou CNPJ" value={busca} onChange={e => setBusca(e.target.value)} /></Campo>
+        <select className="campo mt-2" size={8} value={clienteSel} onChange={e => setClienteSel(e.target.value)}>
+          {opcoes.map(c => <option key={c.id} value={c.id}>{c.razao_social} — {doc(c.cnpj)}</option>)}
+        </select>
+        <div className="mt-4 flex justify-end gap-2">
+          <Botao variante="secundario" onClick={() => setVinc(null)}>Cancelar</Botao>
+          <Botao disabled={!clienteSel} onClick={vincular}>Vincular e dar baixa</Botao>
+        </div>
+      </Modal>
+    </>
+  )
+}
+
+function Conferencia() {
   const { config } = useApp()
   const avisar = useAviso()
   const { dados, erro, recarregar } = useDados(async () => {
