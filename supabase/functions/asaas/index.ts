@@ -3,12 +3,14 @@
 //
 // Secrets (Supabase → Edge Functions → Secrets):
 //   ASAAS_API_KEY   chave da API do Asaas (obrigatória; nunca vai para o front nem para o Git)
-//   ASAAS_BASE_URL  opcional; padrão produção. Sandbox: https://api-sandbox.asaas.com/v3
+//   ASAAS_BASE_URL  opcional; padrão produção. Com a ponte de IP fixo: https://<ip-com-hifens>.sslip.io/v3
+//   ASAAS_PONTE_TOKEN  token da ponte de IP fixo (ponte-asaas/instalar.sh); vazio = chama o Asaas direto
 //
 // Chamada pelo front (usuário logado): supabase.functions.invoke('asaas', { body: { acao: 'saldo' | 'conferencia' } })
 
 const ASAAS = (Deno.env.get('ASAAS_BASE_URL') || 'https://api.asaas.com/v3').replace(/\/$/, '')
 const CHAVE = Deno.env.get('ASAAS_API_KEY') || ''
+const PONTE = Deno.env.get('ASAAS_PONTE_TOKEN') || ''
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -31,6 +33,7 @@ async function usuarioLogado(req: Request) {
 
 /** De onde a função está saindo (para diagnosticar bloqueio de IP/país no Asaas) */
 async function origem() {
+  if (PONTE) return `saída pela ponte de IP fixo (${new URL(ASAAS).hostname})`
   try {
     const i = await (await fetch('https://ipinfo.io/json')).json()
     return `saída: IP ${i.ip}, ${i.city || ''}/${i.country || '?'}, região Supabase ${Deno.env.get('SB_REGION') || '?'}`
@@ -39,7 +42,7 @@ async function origem() {
 
 async function asaasGet(caminho: string) {
   const r = await fetch(ASAAS + caminho, {
-    headers: { access_token: CHAVE, 'User-Agent': 'Siscon-Orgacon', 'Content-Type': 'application/json' },
+    headers: { access_token: CHAVE, 'User-Agent': 'Siscon-Orgacon', 'Content-Type': 'application/json', ...(PONTE ? { 'X-Ponte-Token': PONTE } : {}) },
   })
   const txt = await r.text()
   if (r.status === 403) throw new Error(`Asaas respondeu 403: ${txt.slice(0, 300)} — ${await origem()}`)
