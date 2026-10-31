@@ -29,11 +29,20 @@ async function usuarioLogado(req: Request) {
   return !!u?.id
 }
 
+/** De onde a função está saindo (para diagnosticar bloqueio de IP/país no Asaas) */
+async function origem() {
+  try {
+    const i = await (await fetch('https://ipinfo.io/json')).json()
+    return `saída: IP ${i.ip}, ${i.city || ''}/${i.country || '?'}, região Supabase ${Deno.env.get('SB_REGION') || '?'}`
+  } catch { return `região Supabase ${Deno.env.get('SB_REGION') || '?'}` }
+}
+
 async function asaasGet(caminho: string) {
   const r = await fetch(ASAAS + caminho, {
     headers: { access_token: CHAVE, 'User-Agent': 'Siscon-Orgacon', 'Content-Type': 'application/json' },
   })
   const txt = await r.text()
+  if (r.status === 403) throw new Error(`Asaas respondeu 403: ${txt.slice(0, 300)} — ${await origem()}`)
   if (!r.ok) throw new Error(`Asaas respondeu ${r.status}: ${txt.slice(0, 300)}`)
   return JSON.parse(txt)
 }
