@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, todos, type Honorario, type Recibo, type Despesa } from '../lib/supabase'
 import { useApp, useDados } from '../lib/app'
+import { chamarAsaas } from '../lib/asaas'
 import { moeda, data, ultimasCompetencias, compParaIso } from '../lib/format'
 import { Cabecalho, Cartao, Carregando, Indicador, Vazio } from '../components/ui'
 
@@ -25,6 +26,9 @@ export default function Painel() {
     ])
     return { hon, rec, des }
   })
+
+  // Saldo da conta Asaas (Edge Function); falha não atrapalha o resto do Painel
+  const asaas = useDados(() => chamarAsaas<{ saldo: number }>('saldo'))
 
   const r = useMemo(() => {
     if (!dados || !c) return null
@@ -59,11 +63,14 @@ export default function Painel() {
           {comps.filter(x => x !== config.competencia_atual).map(m => <option key={m} value={m}>Competência {m}</option>)}
         </select>} />
       {!r ? <Carregando /> : <>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <Indicador icone="calendario" rotulo="A receber no mês" valor={moeda(r.aReceber)} detalhe={`Saldo da competência ${c} (honorários + despesas)`} />
           <Indicador icone="ok" rotulo="Recebido no mês" valor={moeda(r.recebido)} tom="ok" detalhe={`Baixas em ${mR}/${aR}, com e sem recibo`} />
           <Indicador icone="alerta" rotulo="Total em atraso" valor={moeda(r.atraso)} tom="perigo" detalhe={`Competências anteriores a ${c}`} />
           <Indicador icone="clientes" rotulo="Clientes inadimplentes" valor={r.ranking.length} tom="alerta" detalhe="Com honorário em aberto de competência anterior" />
+          <Indicador icone="receber" rotulo="Saldo Asaas" tom="ok"
+            valor={asaas.dados ? moeda(asaas.dados.saldo) : asaas.erro ? '—' : '…'}
+            detalhe={asaas.erro ? <span title={asaas.erro}>Indisponível · <Link to="/asaas" className="text-marca-700 hover:underline">ver</Link></span> : <Link to="/asaas" className="text-marca-700 hover:underline">Conferência Asaas</Link>} />
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-3">

@@ -14,6 +14,7 @@ const Recebimentos = lazy(() => import('./pages/Recebimentos'))
 const Despesas = lazy(() => import('./pages/Despesas'))
 const Recibos = lazy(() => import('./pages/Recibos'))
 const Relatorios = lazy(() => import('./pages/Relatorios'))
+const Asaas = lazy(() => import('./pages/Asaas'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
 
 // Link de convite ou de "esqueci minha senha" chega com type=invite/recovery na URL
@@ -35,6 +36,7 @@ function Raiz() {
           <Route path="despesas" element={<Despesas />} />
           <Route path="recibos" element={<Recibos />} />
           <Route path="relatorios" element={<Relatorios />} />
+          <Route path="asaas" element={<Asaas />} />
           <Route path="configuracoes" element={<Configuracoes />} />
           <Route path="*" element={<Painel />} />
         </Route>

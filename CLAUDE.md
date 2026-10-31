@@ -42,6 +42,9 @@ Cores da logo: azul **#204879** (`marca-700`) e cinza **#73767B** (`cinza`). Log
 **Manter esta lista atualizada automaticamente (sem perguntar ao usuário):** ao concluir ou iniciar uma pendência, marcar aqui e mover para "Concluídas".
 
 1. **Integração Asaas** (em andamento): hoje os boletos saem mensalmente e de forma automática no Asaas. Objetivos: (a) ao lançar despesa extra ou mudar valor, atualizar valor e descrição do boleto em aberto; (b) baixa automática por webhook quando o boleto for pago (baixa sem recibo); (c) saldo da conta Asaas no Painel. A chave da API vai em secret do Supabase (Edge Function), nunca no front.
+   - Respostas do usuário: boletos = **assinaturas** mensais no Asaas (valor = honorário do Siscon, mesmo vencimento); só **alguns** clientes têm boleto (pedir a relação); juros/multa do Asaas = **juros recebido**; tarifas do Asaas (boleto pago, notificações) são despesa do escritório → baixa **integral** mesmo com valor líquido menor; despesa lançada após o boleto do mês já pago/vencido vai para o **boleto do mês seguinte**; boletos só são alterados **antes do envio** (envios em geral antes do dia 7), sem reenvio.
+   - **Etapa 1 (feita, somente leitura):** Edge Function `supabase/functions/asaas` (ações `saldo` e `conferencia`; confere usuário logado; secrets `ASAAS_API_KEY` e opcional `ASAAS_BASE_URL`), tela **Conferência Asaas** (`src/pages/Asaas.tsx`, com Excel) e card **Saldo Asaas** no Painel. Vínculo de cliente: `clientes.asaas_customer_id` ou CNPJ. Competência do boleto = mês anterior ao vencimento.
+   - **Etapa 2:** ajustar valor/descrição do boleto em aberto ao mudar despesas/honorários (inclui evento PAYMENT_CREATED). **Etapa 3:** webhook de pagamento → baixa sem recibo, idempotente (`asaas_payment_id`), estorno cancela.
 2. **Exclusão em lote** (definir com o usuário o que excluir em lote).
 3. **Virada final:** reimportar dados atualizados do Base44 no dia em que deixar de usá-lo.
 

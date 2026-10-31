@@ -1,0 +1,133 @@
+import { useMemo } from 'react'
+import { supabase, todos, type Cliente, type Honorario, type Despesa } from '../lib/supabase'
+import { useApp, useDados } from '../lib/app'
+import { chamarAsaas, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/asaas'
+import { moeda, data, comp, doc } from '../lib/format'
+import { baixarExcel } from '../lib/excel'
+import { Botao, Cabecalho, Cartao, Carregando, Indicador, Selo, Vazio, useAviso } from '../components/ui'
+
+const dig = (s: string | null | undefined) => (s || '').replace(/\D/g, '')
+const r2 = (n: number) => Math.round(n * 100) / 100
+/** Boleto com vencimento no mês M corresponde à competência M-1 (vencimento = mês seguinte à competência) */
+const compDoVenc = (venc: string) => {
+  const [a, m] = venc.split('-').map(Number)
+  return m === 1 ? `${a - 1}-12-01` : `${a}-${String(m - 1).padStart(2, '0')}-01`
+}
+
+export default function Asaas() {
+  const { config } = useApp()
+  const avisar = useAviso()
+  const { dados, erro, recarregar } = useDados(async () => {
+    const [asaas, saldo, clientes, hon, des] = await Promise.all([
+      chamarAsaas<{ assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[] }>('conferencia'),
+      chamarAsaas<{ saldo: number }>('saldo'),
+      todos<Cliente>((a, b) => supabase.from('clientes').select('*').range(a, b)),
+      todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').range(a, b)),
+      todos<Despesa>((a, b) => supabase.from('v_despesas').select('*').range(a, b)),
+    ])
+    return { ...asaas, saldo: saldo.saldo, clientes, hon, des }
+  })
+
+  const r = useMemo(() => {
+    if (!dados) return null
+    const sm = Number(config.salario_minimo) || 0
+    const acha = (idAsaas: string, cnpj: string) =>
+      dados.clientes.find(c => c.asaas_customer_id === idAsaas) || dados.clientes.find(c => cnpj && dig(c.cnpj) === cnpj)
+    const assinaturas = dados.assinaturas.map(s => {
+      const c = acha(s.cliente_asaas, s.cpfCnpj)
+      const honorario = c ? r2(sm * c.percentual_honorario / 100) : null
+      const diaAsaas = Number(s.proximo_vencimento?.slice(8, 10)) || null
+      const problemas = !c ? ['Não encontrado no Siscon'] : [
+        ...(Math.abs(s.valor - (honorario || 0)) > 0.009 ? ['Valor diferente'] : []),
+        ...(diaAsaas !== c.dia_vencimento ? ['Vencimento diferente'] : []),
+        ...(c.status !== 'Ativo' ? ['Cliente inativo no Siscon'] : []),
+      ]
+      return { ...s, cliente: c, siscon: c?.razao_social || '', honorario, dif: honorario == null ? null : r2(s.valor - honorario),
+        diaAsaas, diaSiscon: c?.dia_vencimento ?? null, situacao: problemas.length ? problemas.join(' · ') : 'OK' }
+    }).sort((a, b) => (a.situacao === 'OK' ? 1 : 0) - (b.situacao === 'OK' ? 1 : 0) || a.nome.localeCompare(b.nome))
+
+    const cobrancas = dados.cobrancas.map(p => {
+      const c = acha(p.cliente_asaas, p.cpfCnpj)
+      const compIso = compDoVenc(p.vencimento)
+      const siscon = c ? r2(dados.hon.filter(h => h.cliente_id === c.id && h.competencia === compIso).reduce((s, h) => s + h.saldo, 0)
+        + dados.des.filter(d => d.cliente_id === c.id && d.competencia === compIso).reduce((s, d) => s + d.saldo, 0)) : null
+      const dif = siscon == null ? null : r2(p.valor - siscon)
+      return { ...p, siscon_nome: c?.razao_social || '', comp: comp(compIso), siscon, dif,
+        situacao: !c ? 'Não encontrado no Siscon' : Math.abs(dif || 0) > 0.009 ? 'Valor diferente' : 'OK',
+        statusPt: p.status === 'OVERDUE' ? 'Vencido' : 'Pendente' }
+    }).sort((a, b) => a.vencimento.localeCompare(b.vencimento) || a.nome.localeCompare(b.nome))
+
+    return { assinaturas, cobrancas, comProblema: assinaturas.filter(a => a.situacao !== 'OK').length,
+      cobDif: cobrancas.filter(c => c.situacao !== 'OK').length }
+  }, [dados, config.salario_minimo])
+
+  async function exportar() {
+    if (!r) return
+    try {
+      await baixarExcel(`Siscon_Conferencia_Asaas_${new Date().toISOString().slice(0, 10)}.xlsx`, [
+        { nome: 'Assinaturas', titulo: 'Assinaturas ativas no Asaas × cadastro do Siscon', total: ['valor', 'honorario', 'dif'],
+          colunas: [{ titulo: 'Cliente (Asaas)', chave: 'nome', largura: 42 }, { titulo: 'CNPJ/CPF', chave: 'doc', largura: 20 },
+            { titulo: 'Cliente (Siscon)', chave: 'siscon', largura: 42 }, { titulo: 'Valor Asaas', chave: 'valor', tipo: 'moeda' },
+            { titulo: 'Honorário Siscon', chave: 'honorario', tipo: 'moeda', largura: 16 }, { titulo: 'Diferença', chave: 'dif', tipo: 'moeda' },
+            { titulo: 'Dia venc. Asaas', chave: 'diaAsaas', tipo: 'numero', largura: 14 }, { titulo: 'Dia venc. Siscon', chave: 'diaSiscon', tipo: 'numero', largura: 15 },
+            { titulo: 'Próximo venc.', chave: 'proximo_vencimento', tipo: 'data', largura: 13 }, { titulo: 'Situação', chave: 'situacao', largura: 40 }],
+          linhas: r.assinaturas.map(a => ({ ...a, doc: doc(a.cpfCnpj) })) },
+        { nome: 'Boletos em aberto', titulo: 'Boletos em aberto no Asaas × saldo da competência no Siscon', total: ['valor', 'siscon', 'dif'],
+          colunas: [{ titulo: 'Cliente (Asaas)', chave: 'nome', largura: 42 }, { titulo: 'Vencimento', chave: 'vencimento', tipo: 'data', largura: 12 },
+            { titulo: 'Competência', chave: 'comp', largura: 12 }, { titulo: 'Status', chave: 'statusPt', largura: 10 },
+            { titulo: 'Valor boleto', chave: 'valor', tipo: 'moeda' }, { titulo: 'Em aberto Siscon', chave: 'siscon', tipo: 'moeda', largura: 16 },
+            { titulo: 'Diferença', chave: 'dif', tipo: 'moeda' }, { titulo: 'Descrição do boleto', chave: 'descricao', largura: 40 }, { titulo: 'Situação', chave: 'situacao', largura: 26 }],
+          linhas: r.cobrancas as unknown as Record<string, unknown>[] },
+      ])
+    } catch (e) { avisar('Erro ao gerar Excel: ' + (e as Error).message, 'erro') }
+  }
+
+  return (
+    <>
+      <Cabecalho titulo="Conferência Asaas" subtitulo="Somente leitura: compara as assinaturas e boletos do Asaas com o Siscon"
+        acoes={<><Botao variante="secundario" onClick={recarregar}>Atualizar</Botao><Botao onClick={exportar} disabled={!r}>Exportar Excel</Botao></>} />
+      {erro ? <Cartao><p className="p-5 text-sm text-red-700">{erro}</p></Cartao> : !r || !dados ? <Carregando /> : <>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Indicador icone="receber" rotulo="Saldo na conta Asaas" valor={moeda(dados.saldo)} tom="ok" />
+          <Indicador icone="clientes" rotulo="Assinaturas ativas" valor={r.assinaturas.length} detalhe={`Total ${moeda(r.assinaturas.reduce((s, a) => s + a.valor, 0))}/mês`} />
+          <Indicador icone="alerta" rotulo="Assinaturas a conferir" valor={r.comProblema} tom={r.comProblema ? 'alerta' : 'ok'} detalhe="Valor, vencimento ou cliente diferente" />
+          <Indicador icone="honorarios" rotulo="Boletos com diferença" valor={r.cobDif} tom={r.cobDif ? 'alerta' : 'ok'} detalhe={`De ${r.cobrancas.length} em aberto no Asaas`} />
+        </div>
+
+        <Cartao titulo="Assinaturas ativas no Asaas" className="mt-6">
+          {r.assinaturas.length === 0 ? <Vazio texto="Nenhuma assinatura ativa." /> :
+            <div className="overflow-x-auto"><table className="tabela">
+              <thead><tr><th>Cliente</th><th className="text-right">Valor Asaas</th><th className="text-right">Honorário Siscon</th><th className="text-right">Diferença</th><th>Dia venc.</th><th>Situação</th></tr></thead>
+              <tbody>{r.assinaturas.map(a => <tr key={a.id}>
+                <td className="max-w-sm truncate" title={`${a.nome} · ${doc(a.cpfCnpj)}`}>{a.nome}<span className="block text-xs text-slate-400">{doc(a.cpfCnpj)}</span></td>
+                <td className="num text-right">{moeda(a.valor)}</td>
+                <td className="num text-right">{a.honorario == null ? '—' : moeda(a.honorario)}</td>
+                <td className={`num text-right ${a.dif ? 'font-medium text-red-700' : 'text-slate-400'}`}>{a.dif == null ? '—' : moeda(a.dif)}</td>
+                <td className="num">{a.diaAsaas ?? '—'}{a.diaSiscon != null && a.diaSiscon !== a.diaAsaas && <span className="text-xs text-red-700"> (Siscon: {a.diaSiscon})</span>}</td>
+                <td className="text-xs">{a.situacao === 'OK' ? <Selo texto="Ativo" /> : <span className="text-amber-700">{a.situacao}</span>}</td>
+              </tr>)}</tbody>
+            </table></div>}
+        </Cartao>
+
+        <Cartao titulo="Boletos em aberto no Asaas" className="mt-6">
+          {r.cobrancas.length === 0 ? <Vazio texto="Nenhum boleto em aberto." /> :
+            <div className="overflow-x-auto"><table className="tabela">
+              <thead><tr><th>Cliente</th><th>Vencimento</th><th>Comp.</th><th>Status</th><th className="text-right">Boleto</th><th className="text-right">Em aberto Siscon</th><th className="text-right">Diferença</th><th /></tr></thead>
+              <tbody>{r.cobrancas.map(c => <tr key={c.id}>
+                <td className="max-w-sm truncate" title={c.descricao}>{c.nome}</td>
+                <td className="num">{data(c.vencimento)}</td><td className="num">{c.comp}</td>
+                <td><Selo texto={c.statusPt === 'Vencido' ? 'Atrasado' : 'Pendente'} /></td>
+                <td className="num text-right">{moeda(c.valor)}</td>
+                <td className="num text-right">{c.siscon == null ? '—' : moeda(c.siscon)}</td>
+                <td className={`num text-right ${c.dif ? 'font-medium text-red-700' : 'text-slate-400'}`}>{c.dif == null ? <span className="text-xs text-amber-700">sem cliente</span> : moeda(c.dif)}</td>
+                <td className="pr-5 text-right">{c.link && <a className="text-sm text-marca-700 hover:underline" href={c.link} target="_blank" rel="noreferrer">Boleto</a>}</td>
+              </tr>)}</tbody>
+            </table></div>}
+          <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+            Competência = mês anterior ao vencimento. "Em aberto Siscon" = saldo de honorário + despesas extras dessa competência (boletos vencidos podem diferir por causa dos juros).
+          </p>
+        </Cartao>
+      </>}
+    </>
+  )
+}
