@@ -60,8 +60,12 @@ export async function gerarReciboPdf(r: Recibo, esc: Escritorio, abrir = true) {
 
   // Itens
   pdf.setFontSize(8.5); pdf.setTextColor(...AZUL); pdf.setFont('helvetica', 'bold')
-  const itens = r.recibo_itens || []
-  const varios = new Set(itens.map(i => i.cliente_nome).filter(Boolean)).size > 1
+  const brutos = r.recibo_itens || []
+  const varios = new Set(brutos.map(i => i.cliente_nome).filter(Boolean)).size > 1
+  // Recibo único: itens agrupados por cliente, na mesma ordem dos nomes em "Recebemos de"
+  const pos = (n?: string | null) => { const i = n ? r.cliente_nome.indexOf(n) : -1; return i < 0 ? Infinity : i }
+  const itens = varios ? brutos.map((it, i) => ({ it, i })).sort((x, y) => pos(x.it.cliente_nome) - pos(y.it.cliente_nome)
+    || (x.it.cliente_nome || '').localeCompare(y.it.cliente_nome || '') || x.i - y.i).map(x => x.it) : brutos
   const larg = varios ? 64 : W - 70   // largura da descrição; com vários clientes abre a coluna CLIENTE
   pdf.text('DESCRIÇÃO', L, y); if (varios) pdf.text('CLIENTE', L + 66, y); pdf.text('COMPETÊNCIA', L + W - 62, y); pdf.text('VALOR', 210 - L, y, { align: 'right' })
   y += 2; pdf.setDrawColor(200); pdf.line(L, y, 210 - L, y); y += 5
