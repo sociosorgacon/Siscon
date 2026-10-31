@@ -6,7 +6,7 @@ import { pixCopiaECola } from '../lib/pix'
 import { moeda, data, comp, compParaIso, ultimasCompetencias } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
 import { mesSeguinte } from './Painel'
-import { Botao, Cabecalho, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
+import { Abas, Botao, Cabecalho, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
 
 type Aba = 'aberto' | 'inadimplencia' | 'recebido' | 'competencias'
 type Item = { tipo: 'Honorário' | 'Despesa'; cliente_id: string; cliente: string; cnpj: string; telefone: string | null; descricao: string; competencia: string; original: number; juros: number; pago: number; saldo: number }
@@ -107,17 +107,14 @@ export default function Relatorios() {
   return (
     <>
       <Cabecalho titulo="Relatórios" acoes={<>
-        <select className="campo w-48" value={c} onChange={e => setCompSel(e.target.value)}>
+        <select className="campo w-60" value={c} onChange={e => setCompSel(e.target.value)}>
           <option value={config.competencia_atual}>Competência {config.competencia_atual} (atual)</option>
           {comps.filter(x => x !== config.competencia_atual).map(m => <option key={m} value={m}>Competência {m}</option>)}
         </select>
         <Botao variante="secundario" onClick={() => window.print()}>Imprimir / PDF</Botao>
         <Botao onClick={exportar} disabled={!dados}>Exportar Excel</Botao>
       </>} />
-      <div className="mb-3 flex flex-wrap gap-1 border-b border-slate-200 print:hidden">
-        {abas.map(([k, n]) => <button key={k} onClick={() => setAba(k)}
-          className={`-mb-px border-b-2 px-4 py-2 text-sm ${aba === k ? 'border-marca-700 font-medium text-marca-800' : 'border-transparent text-slate-500'}`}>{n}</button>)}
-      </div>
+      <Abas abas={abas} atual={aba} mudar={setAba} />
       {!dados ? <Carregando /> : <>
         {(aba === 'aberto' || aba === 'inadimplencia') && (
           <Cartao titulo={aba === 'aberto'

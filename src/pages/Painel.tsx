@@ -54,33 +54,33 @@ export default function Painel() {
   return (
     <>
       <Cabecalho titulo="Painel" subtitulo="Indicadores pela competência"
-        acoes={<select className="campo w-48" value={c} onChange={e => setCompSel(e.target.value)}>
+        acoes={<select className="campo w-60" value={c} onChange={e => setCompSel(e.target.value)}>
           <option value={config.competencia_atual}>Competência {config.competencia_atual} (atual)</option>
           {comps.filter(x => x !== config.competencia_atual).map(m => <option key={m} value={m}>Competência {m}</option>)}
         </select>} />
       {!r ? <Carregando /> : <>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Indicador rotulo="A receber no mês" valor={moeda(r.aReceber)} detalhe={`Saldo da competência ${c} (honorários + despesas)`} />
-          <Indicador rotulo="Recebido no mês" valor={moeda(r.recebido)} tom="ok" detalhe={`Baixas em ${mR}/${aR}, com e sem recibo`} />
-          <Indicador rotulo="Total em atraso" valor={moeda(r.atraso)} tom="perigo" detalhe={`Competências anteriores a ${c}`} />
-          <Indicador rotulo="Clientes inadimplentes" valor={r.ranking.length} tom="alerta" detalhe="Com honorário em aberto de competência anterior" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Indicador icone="calendario" rotulo="A receber no mês" valor={moeda(r.aReceber)} detalhe={`Saldo da competência ${c} (honorários + despesas)`} />
+          <Indicador icone="ok" rotulo="Recebido no mês" valor={moeda(r.recebido)} tom="ok" detalhe={`Baixas em ${mR}/${aR}, com e sem recibo`} />
+          <Indicador icone="alerta" rotulo="Total em atraso" valor={moeda(r.atraso)} tom="perigo" detalhe={`Competências anteriores a ${c}`} />
+          <Indicador icone="clientes" rotulo="Clientes inadimplentes" valor={r.ranking.length} tom="alerta" detalhe="Com honorário em aberto de competência anterior" />
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div className="mt-6 grid gap-6 lg:grid-cols-3">
           <Cartao titulo="Recebido x pendente por competência" className="lg:col-span-2"><Grafico linhas={r.grafico} /></Cartao>
           <Cartao titulo="Inadimplência" acoes={<Link to="/relatorios" className="text-sm text-marca-700 hover:underline">Ver todas</Link>}>
             {r.ranking.length === 0 ? <Vazio texto="Nenhum cliente em atraso." /> :
               <ol className="divide-y divide-slate-100">
                 {r.ranking.slice(0, 5).map((x, i) => (
-                  <li key={x.nome} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                    <span className="min-w-0 truncate"><b className="mr-2 text-slate-400">{i + 1}º</b>{x.nome}</span>
+                  <li key={x.nome} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                    <span className="flex min-w-0 items-center gap-3"><b className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] ${i === 0 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</b><span className="truncate">{x.nome}</span></span>
                     <span className="num shrink-0 font-medium text-red-700">{moeda(x.total)}</span>
                   </li>))}
               </ol>}
           </Cartao>
         </div>
 
-        <Cartao titulo="Últimos recebimentos" className="mt-4" acoes={<Link to="/recibos" className="text-sm text-marca-700 hover:underline">Todas as baixas</Link>}>
+        <Cartao titulo="Últimos recebimentos" className="mt-6" acoes={<Link to="/recibos" className="text-sm text-marca-700 hover:underline">Todas as baixas</Link>}>
           <div className="overflow-x-auto">
             <table className="tabela">
               <thead><tr><th>Recibo</th><th>Cliente</th><th>Data</th><th className="text-right">Valor</th></tr></thead>

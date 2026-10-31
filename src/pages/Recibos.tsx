@@ -34,13 +34,13 @@ export default function Recibos() {
     <>
       <Cabecalho titulo="Baixas e Recibos" subtitulo={dados && `${lista.length} baixas · ${moeda(total)} recebidos`} />
       <Cartao>
-        <div className="flex flex-wrap items-end gap-2 border-b border-slate-100 p-3">
-          <input className="campo max-w-sm" placeholder="Buscar por cliente ou número" value={busca} onChange={e => setBusca(e.target.value)} />
+        <div className="filtros">
+          <input className="campo w-72" placeholder="Buscar por cliente ou número" value={busca} onChange={e => setBusca(e.target.value)} />
           <select className="campo w-40" value={tipo} onChange={e => setTipo(e.target.value as typeof tipo)}>
             <option value="">Todas as baixas</option><option value="com">Com recibo</option><option value="sem">Sem recibo</option>
           </select>
-          <label className="text-xs text-slate-500">De <input className="campo" type="date" value={de} onChange={e => setDe(e.target.value)} /></label>
-          <label className="text-xs text-slate-500">Até <input className="campo" type="date" value={ate} onChange={e => setAte(e.target.value)} /></label>
+          <label className="flex items-center gap-2 text-xs text-slate-500">De <input className="campo w-40" type="date" value={de} onChange={e => setDe(e.target.value)} /></label>
+          <label className="flex items-center gap-2 text-xs text-slate-500">Até <input className="campo w-40" type="date" value={ate} onChange={e => setAte(e.target.value)} /></label>
         </div>
         {!dados ? <Carregando /> : lista.length === 0 ? <Vazio /> :
           <div className="overflow-x-auto">
@@ -54,7 +54,7 @@ export default function Recibos() {
                   <td>{r.metodo_pagamento || '—'}</td>
                   <td className={`num text-right ${r.cancelado ? 'line-through' : ''}`}>{moeda(r.valor)}</td>
                   <td>{r.cancelado && <span title={r.motivo_cancelamento || ''}><Selo texto="Cancelado" /></span>}</td>
-                  <td className="space-x-3 text-right">
+                  <td className="space-x-3 pr-5 text-right">
                     {r.com_recibo && <Botao variante="link" onClick={() => imprimirRecibo(r.id, escritorioDe(config))}>PDF</Botao>}
                     {!r.cancelado && <Botao variante="link" className="!text-red-600" onClick={() => setCancelar(r)}>Cancelar</Botao>}
                   </td>

@@ -27,7 +27,7 @@ export default function Clientes() {
       <Cabecalho titulo="Clientes" subtitulo={dados && `${lista.length} clientes · honorários mensais: ${moeda(totalMensal)}`}
         acoes={<Botao onClick={() => setEdit(novo())}>Novo cliente</Botao>} />
       <Cartao>
-        <div className="flex flex-wrap gap-2 border-b border-slate-100 p-3">
+        <div className="filtros">
           <input className="campo max-w-sm" placeholder="Buscar por nome ou CNPJ/CPF" value={busca} onChange={e => setBusca(e.target.value)} />
           <select className="campo w-36" value={filtro} onChange={e => setFiltro(e.target.value as typeof filtro)}>
             <option value="Ativo">Ativos</option><option value="Inativo">Inativos</option><option value="">Todos</option>
@@ -46,7 +46,7 @@ export default function Clientes() {
                   <td className="num text-right">{moeda(sm * c.percentual_honorario / 100)}</td>
                   <td className="num">dia {c.dia_vencimento}</td>
                   <td><Selo texto={c.status} /></td>
-                  <td className="text-right"><Botao variante="link" onClick={() => setEdit(c)}>Editar</Botao></td>
+                  <td className="pr-5 text-right"><Botao variante="link" onClick={() => setEdit(c)}>Editar</Botao></td>
                 </tr>))}
               </tbody>
             </table>

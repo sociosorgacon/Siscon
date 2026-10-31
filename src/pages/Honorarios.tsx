@@ -59,8 +59,8 @@ export default function Honorarios() {
           <Botao onClick={avancar} disabled={ocupado}>Avançar competência</Botao>
         </>} />
       <Cartao>
-        <div className="flex flex-wrap gap-2 border-b border-slate-100 p-3">
-          <select className="campo w-44" value={competencia} onChange={e => setCompSel(e.target.value)}>
+        <div className="filtros">
+          <select className="campo w-56" value={competencia} onChange={e => setCompSel(e.target.value)}>
             <option value="">Todas as competências</option>
             {comps.map(c => <option key={c} value={c}>Competência {c}</option>)}
           </select>
@@ -77,7 +77,7 @@ export default function Honorarios() {
                 <th className="text-right">Pago</th><th className="text-right">Saldo</th><th>Situação</th><th /></tr></thead>
               <tbody>{lista.map(h => (
                 <tr key={h.id}>
-                  <td className="max-w-xs truncate" title={h.cliente_nome}>{h.cliente_nome}</td>
+                  <td className="max-w-[15rem] truncate font-medium text-slate-800" title={h.cliente_nome}>{h.cliente_nome}</td>
                   <td className="num">{comp(h.competencia)}</td>
                   <td className="num">{data(h.vencimento)}</td>
                   <td className="num text-right">{moeda(h.valor_original)}</td>
@@ -85,7 +85,7 @@ export default function Honorarios() {
                   <td className="num text-right">{h.valor_pago_acumulado ? moeda(h.valor_pago_acumulado) : '—'}</td>
                   <td className="num text-right font-medium">{h.saldo ? moeda(h.saldo) : '—'}</td>
                   <td><Selo texto={h.situacao} /></td>
-                  <td className="space-x-3 text-right">
+                  <td className="space-x-3 pr-5 text-right">
                     {h.saldo > 0 && <Link className="text-sm text-marca-700 hover:underline" to={`/recebimentos?cliente=${h.cliente_id}`}>Receber</Link>}
                     <Botao variante="link" onClick={() => setEdit(h)}>Editar</Botao>
                   </td>

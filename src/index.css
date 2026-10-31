@@ -6,6 +6,7 @@
   --color-marca-50: #eef3f9;
   --color-marca-100: #d6e2f0;
   --color-marca-200: #adc4e0;
+  --color-marca-500: #3a6aa8;
   --color-marca-600: #2a5a96;
   --color-marca-700: #204879;
   --color-marca-800: #1a3a62;
@@ -13,11 +14,31 @@
   --color-cinza: #73767b;
 }
 
-body { @apply bg-slate-50 text-slate-800 antialiased; }
+html { font-feature-settings: "cv11", "ss01"; }
+body { @apply bg-[#f4f6fa] text-slate-800 antialiased; }
 .num { font-variant-numeric: tabular-nums; }
+
+@layer components {
+/* Tabelas */
 .tabela { @apply w-full text-sm; }
-.tabela th { @apply text-left font-medium text-slate-500 text-xs uppercase tracking-wide px-3 py-2 border-b border-slate-200 whitespace-nowrap; }
-.tabela td { @apply px-3 py-2 border-b border-slate-100 whitespace-nowrap; }
-.tabela tbody tr:hover { @apply bg-slate-50; }
-.campo { @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-marca-600 focus:ring-2 focus:ring-marca-100; }
-.rotulo { @apply block text-xs font-medium text-slate-600 mb-1; }
+.tabela thead th { @apply sticky top-0 z-[1] bg-slate-50/95 text-left font-semibold text-slate-500 text-[11px] uppercase tracking-wider px-3.5 py-2.5 border-b border-slate-200 whitespace-nowrap backdrop-blur; }
+.tabela td { @apply px-3.5 py-2.5 border-b border-slate-100 whitespace-nowrap; }
+.tabela tbody tr { @apply transition-colors; }
+.tabela tbody tr:hover { @apply bg-marca-50/60; }
+.tabela tbody tr:last-child td { @apply border-b-0; }
+.tabela tfoot td { @apply bg-slate-50 border-t border-slate-200; }
+
+/* Campos */
+.campo { @apply h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-marca-500 focus:ring-4 focus:ring-marca-100 disabled:bg-slate-50 disabled:text-slate-500; }
+textarea.campo { @apply h-auto py-2; }
+.rotulo { @apply block text-xs font-medium text-slate-600 mb-1.5; }
+input[type="checkbox"] { @apply h-4 w-4 rounded border-slate-300 accent-marca-700; }
+
+/* Barra de filtros dentro de cartões */
+.filtros { @apply flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white px-4 py-3; }
+}
+
+@media print {
+  body { background: white; }
+  .cartao { box-shadow: none !important; }
+}

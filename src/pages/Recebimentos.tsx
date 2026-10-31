@@ -4,7 +4,7 @@ import { supabase, ok, todos, type Cliente, type Honorario, type Despesa, type R
 import { useApp, useDados, escritorioDe } from '../lib/app'
 import { moeda, data, comp, hojeIso, normaliza, doc } from '../lib/format'
 import { imprimirRecibo } from '../lib/recibo-pdf'
-import { Botao, Cabecalho, Campo, Cartao, Carregando, Selo, Vazio, useAviso } from '../components/ui'
+import { Botao, Cabecalho, Campo, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
 
 type Linha = { tipo: 'honorario' | 'despesa'; id: string; descricao: string; comp: string; venc: string; saldo: number; situacao: string }
 type Sel = { marcado: boolean; valor: string; desconto: string }
@@ -138,8 +138,8 @@ export default function Recebimentos() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-6">
           {modo === 'cliente' ? (
             <Cartao titulo="Cliente">
               <div className="relative p-4">
@@ -171,17 +171,17 @@ export default function Recebimentos() {
               {!abertos ? <Carregando /> : abertos.length === 0 ? <Vazio texto="Este cliente não tem nada em aberto." /> :
                 <div className="overflow-x-auto">
                   <table className="tabela">
-                    <thead><tr><th /><th>Item</th><th>Comp.</th><th>Venc.</th><th className="text-right">Saldo</th><th>Situação</th><th className="w-32">Receber (R$)</th><th className="w-28">{integral ? 'Desconto (integral)' : 'Desconto'}</th></tr></thead>
+                    <thead><tr><th /><th>Item</th><th>Comp.</th><th className="text-right">Saldo</th><th className="text-right">Receber (R$)</th><th className="w-28">{integral ? 'Desconto (integral)' : 'Desconto'}</th></tr></thead>
                     <tbody>{abertos.map(l => {
                       const s = sel[l.id]
                       return (
                         <tr key={l.id} className={s?.marcado ? 'bg-marca-50' : ''}>
                           <td><input type="checkbox" checked={!!s?.marcado} onChange={e => marcar(l, e.target.checked)} /></td>
-                          <td className="max-w-xs truncate">{l.tipo === 'despesa' ? <span className="mr-1 text-xs text-slate-400">Extra ·</span> : null}{l.descricao}</td>
-                          <td className="num">{comp(l.comp)}</td><td className="num">{data(l.venc)}</td>
-                          <td className="num text-right">{moeda(l.saldo)}</td><td><Selo texto={l.situacao} /></td>
-                          <td><input className="campo num py-1 text-right" disabled={!s?.marcado} value={s?.valor ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], valor: e.target.value } }))} /></td>
-                          <td><input className="campo num py-1 text-right" disabled={!s?.marcado || integral} placeholder="0,00" value={integral && s?.marcado ? fmt(Math.max(0, l.saldo - num(s.valor))) : s?.desconto ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], desconto: e.target.value } }))} /></td>
+                          <td className="max-w-[14rem] truncate">{l.tipo === 'despesa' ? <span className="mr-1 text-xs text-slate-400">Extra ·</span> : null}{l.descricao}</td>
+                          <td className="num" title={`${l.situacao} · vencimento ${data(l.venc)}`}><span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${l.situacao === 'Atrasado' ? 'bg-red-500' : l.situacao === 'Pago Parcial' ? 'bg-amber-500' : 'bg-sky-500'}`} />{comp(l.comp)}</td>
+                          <td className="num text-right">{moeda(l.saldo)}</td>
+                          <td><input className="campo num !h-8 w-24 !px-2 text-right" disabled={!s?.marcado} value={s?.valor ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], valor: e.target.value } }))} /></td>
+                          <td><input className="campo num !h-8 w-24 !px-2 text-right" disabled={!s?.marcado || integral} placeholder="0,00" value={integral && s?.marcado ? fmt(Math.max(0, l.saldo - num(s.valor))) : s?.desconto ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], desconto: e.target.value } }))} /></td>
                         </tr>)
                     })}</tbody>
                   </table>
@@ -202,7 +202,7 @@ export default function Recebimentos() {
           )}
         </div>
 
-        <Cartao titulo="Pagamento" className="h-fit lg:sticky lg:top-4">
+        <Cartao titulo="Pagamento" className="h-fit xl:sticky xl:top-20">
           <div className="space-y-3 p-4">
             {modo === 'cliente' && clienteId && (
               <div className="rounded-md bg-slate-50 p-3">

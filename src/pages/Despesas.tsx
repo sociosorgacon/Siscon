@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Despesa } from '../lib/supabase'
 import { useApp, useDados } from '../lib/app'
 import { moeda, data, comp, compParaIso, hojeIso, normaliza } from '../lib/format'
-import { Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Selo, Vazio, useAviso } from '../components/ui'
+import { Abas, Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Selo, Vazio, useAviso } from '../components/ui'
 
 type Fixa = { id: string; cliente_id: string; descricao: string; valor: number; observacoes: string | null; ativa: boolean; clientes?: { razao_social: string } }
 type ClienteMin = Pick<Cliente, 'id' | 'razao_social' | 'status'>
@@ -19,10 +19,7 @@ export default function Despesas() {
   const { dados: clientes } = useDados(() => todos<ClienteMin>((a, b) => supabase.from('clientes').select('id, razao_social, status').order('razao_social').range(a, b)))
   return (
     <>
-      <div className="mb-3 flex gap-1 border-b border-slate-200">
-        {([['lancamentos', 'Despesas extras'], ['fixas', 'Despesas fixas (recorrentes)']] as const).map(([k, n]) =>
-          <button key={k} onClick={() => setAba(k)} className={`-mb-px border-b-2 px-4 py-2 text-sm ${aba === k ? 'border-marca-700 font-medium text-marca-800' : 'border-transparent text-slate-500'}`}>{n}</button>)}
-      </div>
+      <Abas abas={[['lancamentos', 'Despesas extras'], ['fixas', 'Despesas fixas (recorrentes)']] as const} atual={aba} mudar={setAba} />
       {aba === 'lancamentos' ? <Lancamentos clientes={clientes || []} /> : <Fixas clientes={clientes || []} />}
     </>
   )
@@ -44,7 +41,7 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
       <Cabecalho titulo="Despesas extras" subtitulo={dados && `${lista.length} lançamentos · saldo em aberto ${moeda(lista.reduce((s, d) => s + d.saldo, 0))}`}
         acoes={<Botao onClick={() => setEdit({})}>Nova despesa</Botao>} />
       <Cartao>
-        <div className="flex flex-wrap gap-2 border-b border-slate-100 p-3">
+        <div className="filtros">
           <select className="campo w-40" value={status} onChange={e => setStatus(e.target.value)}>
             <option value="abertas">Em aberto</option><option>Pendente</option><option>Pago Parcial</option><option>Pago</option><option value="">Todas</option>
           </select>
@@ -57,13 +54,13 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
               <tbody>{lista.map(d => (
                 <tr key={d.id}>
                   <td className="num">{data(d.data)}</td>
-                  <td className="max-w-[16rem] truncate" title={d.cliente_nome}>{d.cliente_nome}</td>
-                  <td className="max-w-[16rem] truncate" title={d.descricao}>{d.descricao}</td>
+                  <td className="max-w-[13rem] truncate font-medium text-slate-800" title={d.cliente_nome}>{d.cliente_nome}</td>
+                  <td className="max-w-[13rem] truncate" title={d.descricao}>{d.descricao}</td>
                   <td className="num">{comp(d.competencia)}</td>
                   <td className="num text-right">{moeda(d.valor)}</td>
                   <td className="num text-right font-medium">{d.saldo ? moeda(d.saldo) : '—'}</td>
                   <td><Selo texto={d.status} /></td>
-                  <td className="space-x-3 text-right">
+                  <td className="space-x-3 pr-5 text-right">
                     {d.saldo > 0 && <Link className="text-sm text-marca-700 hover:underline" to={`/recebimentos?cliente=${d.cliente_id}`}>Receber</Link>}
                     <Botao variante="link" onClick={() => setEdit(d)}>Editar</Botao>
                   </td>
