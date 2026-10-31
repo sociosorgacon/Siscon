@@ -177,13 +177,13 @@ export default function Recebimentos() {
                     ? <div className="flex gap-2 pt-1"><input className="campo" autoFocus placeholder="Nome ou CNPJ do outro cliente" value={busca} onChange={e => setBusca(e.target.value)} />
                         <Botao variante="secundario" onClick={() => { setAdicionando(false); setBusca('') }}>Cancelar</Botao></div>
                     : <Botao variante="link" onClick={() => setAdicionando(true)}>+ Adicionar outro cliente (recibo único)</Botao>}
-                  {adicionando && sugestoes.length > 0 && <ul className="absolute left-4 right-4 z-10 mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                  {adicionando && sugestoes.length > 0 && <ul className="mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
                     {sugestoes.map(c => <li key={c.id}><button className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => escolher(c.id)}>
                       {c.razao_social} <span className="text-xs text-slate-400">{doc(c.cnpj)}</span></button></li>)}
                   </ul>}
                 </div>) : <>
                   <input className="campo" autoFocus placeholder="Digite o nome ou CNPJ do cliente" value={busca} onChange={e => setBusca(e.target.value)} />
-                  {sugestoes.length > 0 && <ul className="absolute left-4 right-4 z-10 mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                  {sugestoes.length > 0 && <ul className="mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
                     {sugestoes.map(c => <li key={c.id}><button className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => escolher(c.id)}>
                       {c.razao_social} <span className="text-xs text-slate-400">{doc(c.cnpj)}</span></button></li>)}
                   </ul>}
