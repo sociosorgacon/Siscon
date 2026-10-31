@@ -105,7 +105,7 @@ function Grafico({ linhas }: { linhas: { mes: string; recebido: number; pendente
         {linhas.map(l => (
           <div key={l.mes} className="flex flex-1 flex-col items-center gap-1" title={`${l.mes}\nRecebido: ${moeda(l.recebido)}\nPendente: ${moeda(l.pendente)}`}>
             <div className="flex w-full max-w-14 flex-col justify-end" style={{ height: '13rem' }}>
-              <div className="rounded-t bg-red-300" style={{ height: `${(l.pendente / max) * 100}%` }} />
+              <div className="rounded-t bg-red-400" style={{ height: `${(l.pendente / max) * 100}%` }} />
               <div className={`bg-marca-600 ${l.pendente ? '' : 'rounded-t'}`} style={{ height: `${(l.recebido / max) * 100}%` }} />
             </div>
             <span className="text-xs text-slate-500">{l.mes}</span>
@@ -113,7 +113,7 @@ function Grafico({ linhas }: { linhas: { mes: string; recebido: number; pendente
       </div>
       <div className="mt-3 flex gap-4 text-xs text-slate-500">
         <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-marca-600" />Recebido</span>
-        <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-red-300" />Em aberto</span>
+        <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-red-400" />Em aberto</span>
       </div>
     </div>
   )
