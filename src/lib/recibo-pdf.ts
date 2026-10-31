@@ -51,22 +51,28 @@ export async function gerarReciboPdf(r: Recibo, esc: Escritorio, abrir = true) {
   // Texto do recibo
   y += 18
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10.5); pdf.setTextColor(30)
-  const pagador = `${r.cliente_nome}${r.cliente_cnpj ? `, ${(r.cliente_cnpj.replace(/\D/g, '').length === 11 ? 'CPF' : 'CNPJ')} ${doc(r.cliente_cnpj)}` : ''}`
+  // Recibo único (vários clientes): nomes e documentos separados por vírgula, na mesma ordem
+  const pagador = r.cliente_cnpj?.includes(',') ? `${r.cliente_nome}, CNPJ/CPF ${r.cliente_cnpj}, respectivamente`
+    : `${r.cliente_nome}${r.cliente_cnpj ? `, ${(r.cliente_cnpj.replace(/\D/g, '').length === 11 ? 'CPF' : 'CNPJ')} ${doc(r.cliente_cnpj)}` : ''}`
   const texto = `Recebemos de ${pagador}, a importância de ${moeda(r.valor)} (${porExtenso(r.valor)}), referente aos itens abaixo discriminados, pelo que damos plena e geral quitação.`
   const linhas = pdf.splitTextToSize(texto, W)
   pdf.text(linhas, L, y); y += linhas.length * 5.2 + 6
 
   // Itens
   pdf.setFontSize(8.5); pdf.setTextColor(...AZUL); pdf.setFont('helvetica', 'bold')
-  pdf.text('DESCRIÇÃO', L, y); pdf.text('COMPETÊNCIA', L + W - 62, y); pdf.text('VALOR', 210 - L, y, { align: 'right' })
+  const itens = r.recibo_itens || []
+  const varios = new Set(itens.map(i => i.cliente_nome).filter(Boolean)).size > 1
+  const larg = varios ? 64 : W - 70   // largura da descrição; com vários clientes abre a coluna CLIENTE
+  pdf.text('DESCRIÇÃO', L, y); if (varios) pdf.text('CLIENTE', L + 66, y); pdf.text('COMPETÊNCIA', L + W - 62, y); pdf.text('VALOR', 210 - L, y, { align: 'right' })
   y += 2; pdf.setDrawColor(200); pdf.line(L, y, 210 - L, y); y += 5
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(30)
-  for (const it of r.recibo_itens || []) {
-    const desc = pdf.splitTextToSize(`${it.descricao}${it.desconto ? ` (desconto ${moeda(it.desconto)})` : ''}`, W - 70)
-    pdf.text(desc, L, y)
+  for (const it of itens) {
+    const desc = pdf.splitTextToSize(`${it.descricao}${it.desconto ? ` (desconto ${moeda(it.desconto)})` : ''}`, larg)
+    const cli: string[] = varios ? pdf.splitTextToSize(it.cliente_nome || '—', 44) : []
+    pdf.text(desc, L, y); if (varios) pdf.text(cli, L + 66, y)
     pdf.text(it.competencia ? comp(it.competencia) : '—', L + W - 62, y)
     pdf.text(moeda(it.valor), 210 - L, y, { align: 'right' })
-    y += desc.length * 5 + 2
+    y += Math.max(desc.length, cli.length) * 5 + 2
     if (y > 250) { pdf.addPage(); y = 20 }
   }
   pdf.line(L, y - 1, 210 - L, y - 1); y += 5

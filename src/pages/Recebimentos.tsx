@@ -6,7 +6,7 @@ import { moeda, data, comp, hojeIso, normaliza, doc } from '../lib/format'
 import { imprimirRecibo } from '../lib/recibo-pdf'
 import { Botao, Cabecalho, Campo, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
 
-type Linha = { tipo: 'honorario' | 'despesa'; id: string; descricao: string; comp: string; venc: string; saldo: number; situacao: string }
+type Linha = { tipo: 'honorario' | 'despesa'; id: string; cid: string; cliente: string; descricao: string; comp: string; venc: string; saldo: number; situacao: string }
 type Sel = { marcado: boolean; valor: string; desconto: string }
 type Avulso = { descricao: string; valor: string }
 const METODOS = ['Pix/Boleto', 'Pix', 'Boleto', 'Dinheiro', 'Transferência', 'Cartão']
@@ -35,26 +35,44 @@ export default function Recebimentos() {
   const [comRecibo, setComRecibo] = useState(true)
   const [integral, setIntegral] = useState(false)
   const [valorRecebido, setValorRecebido] = useState('')
+  // Recibo único: outros clientes além do principal (escolhidos na hora)
+  const [extras, setExtras] = useState<string[]>([])
+  const [adicionando, setAdicionando] = useState(false)
 
   const { dados: clientes } = useDados(() => todos<Cliente>((a, b) => supabase.from('clientes').select('*').order('razao_social').range(a, b)))
   const cliente = clientes?.find(c => c.id === clienteId)
+  const ids = clienteId ? [clienteId, ...extras.filter(x => x !== clienteId)] : []
+  const selecionados = ids.map(id => clientes?.find(c => c.id === id)).filter((c): c is Cliente => !!c)
+  const varios = ids.length > 1
 
   const { dados: abertos, recarregar } = useDados(async (): Promise<Linha[]> => {
-    if (!clienteId) return []
+    if (!ids.length) return []
     const [h, d] = await Promise.all([
-      todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').eq('cliente_id', clienteId).gt('saldo', 0).order('competencia').range(a, b)),
-      todos<Despesa>((a, b) => supabase.from('v_despesas').select('*').eq('cliente_id', clienteId).gt('saldo', 0).order('data').range(a, b)),
+      todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').in('cliente_id', ids).gt('saldo', 0).order('competencia').range(a, b)),
+      todos<Despesa>((a, b) => supabase.from('v_despesas').select('*').in('cliente_id', ids).gt('saldo', 0).order('data').range(a, b)),
     ])
     return [
-      ...h.map(x => ({ tipo: 'honorario' as const, id: x.id, descricao: `Honorários${x.juros_calc ? ` (inclui ${moeda(x.juros_calc)} de juros)` : ''}`, comp: x.competencia, venc: x.vencimento, saldo: x.saldo, situacao: x.situacao })),
-      ...d.map(x => ({ tipo: 'despesa' as const, id: x.id, descricao: x.descricao, comp: x.competencia, venc: x.data, saldo: x.saldo, situacao: x.status })),
+      ...h.map(x => ({ tipo: 'honorario' as const, id: x.id, cid: x.cliente_id, cliente: x.cliente_nome, descricao: `Honorários${x.juros_calc ? ` (inclui ${moeda(x.juros_calc)} de juros)` : ''}`, comp: x.competencia, venc: x.vencimento, saldo: x.saldo, situacao: x.situacao })),
+      ...d.map(x => ({ tipo: 'despesa' as const, id: x.id, cid: x.cliente_id, cliente: x.cliente_nome, descricao: x.descricao, comp: x.competencia, venc: x.data, saldo: x.saldo, situacao: x.status })),
     ]
-  }, [clienteId])
+  }, [ids.join()])
 
-  useEffect(() => { setSel({}); setAvulsos([]) }, [clienteId])
+  useEffect(() => { setSel({}); setAvulsos([]) }, [ids.join()])
 
-  const sugestoes = useMemo(() => !busca || cliente ? [] :
-    (clientes || []).filter(c => normaliza(`${c.razao_social} ${c.cnpj}`).includes(normaliza(busca))).slice(0, 8), [busca, clientes, cliente])
+  const sugestoes = useMemo(() => !busca || (cliente && !adicionando) ? [] :
+    (clientes || []).filter(c => !ids.includes(c.id) && normaliza(`${c.razao_social} ${c.cnpj}`).includes(normaliza(busca))).slice(0, 8),
+    [busca, clientes, cliente, adicionando, ids.join()]) // eslint-disable-line react-hooks/exhaustive-deps
+  function escolher(id: string) {
+    if (cliente && adicionando) setExtras(x => [...x, id]); else { setParams({ cliente: id }); setExtras([]) }
+    setAdicionando(false)
+    setBusca('')
+  }
+  function removerCliente(id: string) {
+    if (id !== clienteId) return setExtras(x => x.filter(y => y !== id))
+    const [prox, ...resto] = extras
+    if (!prox) { setParams({}); return }
+    setParams({ cliente: prox }); setExtras(resto)
+  }
 
   const itens = [
     ...(abertos || []).filter(l => sel[l.id]?.marcado).map(l => {
@@ -100,12 +118,17 @@ export default function Recebimentos() {
     if (!(modo === 'avulso' || comRecibo) && avulsos.some(a => a.descricao && num(a.valor) > 0)) return avisar('Serviço avulso só pode ser baixado com recibo.', 'erro')
     const quitados = integral ? itens.filter(i => (i as { desconto?: number }).desconto).length : 0
     if (!confirm(`Registrar baixa de ${moeda(total)} em ${data(dataPg)} ${modo === 'avulso' || comRecibo ? 'COM recibo' : 'SEM recibo'}?${quitados ? `\n\nBaixa integral: ${quitados} item(ns) serão quitados mesmo com valor menor que o saldo.` : ''}`)) return
+    // Recibo único: entram como pagadores os clientes com itens marcados (todos, se só houver avulsos)
+    const comItens = selecionados.filter(c => (abertos || []).some(l => l.cid === c.id && sel[l.id]?.marcado))
+    const pagantes = comItens.length ? comItens : selecionados
+    const multi = modo === 'cliente' && pagantes.length > 1
     setSalvando(true)
     try {
       const r = ok(await supabase.rpc('registrar_recebimento', {
-        p_cliente_id: modo === 'cliente' ? clienteId : null, p_data: dataPg, p_metodo: metodo, p_itens: itens,
-        p_cliente_nome: modo === 'avulso' ? pagador.nome.trim().toUpperCase() : null,
-        p_cliente_cnpj: modo === 'avulso' ? pagador.doc.replace(/\D/g, '') || null : null, p_observacao: obs || null,
+        p_cliente_id: modo === 'cliente' ? (pagantes[0]?.id || clienteId) : null, p_data: dataPg, p_metodo: metodo, p_itens: itens,
+        p_cliente_nome: modo === 'avulso' ? pagador.nome.trim().toUpperCase() : multi ? pagantes.map(c => c.razao_social).join(', ') : null,
+        p_cliente_cnpj: modo === 'avulso' ? pagador.doc.replace(/\D/g, '') || null : multi ? pagantes.map(c => doc(c.cnpj)).join(', ') : null,
+        p_observacao: obs || null,
         p_com_recibo: modo === 'avulso' || comRecibo,
       })) as Recibo
       setUltimo(r); avisar(r.numero ? `Recibo nº ${r.numero} emitido.` : 'Baixa registrada sem recibo.')
@@ -113,7 +136,7 @@ export default function Recebimentos() {
     } catch (e) { avisar((e as Error).message, 'erro') } finally { setSalvando(false) }
   }
 
-  const trocarModo = (m: typeof modo) => { setModo(m); setParams({}); setBusca(''); setUltimo(null); setAvulsos(m === 'avulso' ? [{ descricao: '', valor: '' }] : []) }
+  const trocarModo = (m: typeof modo) => { setModo(m); setParams({}); setExtras([]); setBusca(''); setUltimo(null); setAvulsos(m === 'avulso' ? [{ descricao: '', valor: '' }] : []) }
 
   return (
     <>
@@ -141,17 +164,27 @@ export default function Recebimentos() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
           {modo === 'cliente' ? (
-            <Cartao titulo="Cliente">
+            <Cartao titulo={varios ? `Clientes (recibo único · ${ids.length})` : 'Cliente'}>
               <div className="relative p-4">
-                {cliente ? (
-                  <div className="flex items-center justify-between gap-3">
-                    <div><p className="font-medium">{cliente.razao_social}</p><p className="text-xs text-slate-500">{doc(cliente.cnpj)}</p></div>
-                    <Botao variante="secundario" onClick={() => { setParams({}); setBusca('') }}>Trocar</Botao>
-                  </div>
-                ) : <>
+                {cliente ? (<div className="space-y-2">
+                  {selecionados.map(c => (
+                    <div key={c.id} className="flex items-center justify-between gap-3">
+                      <div><p className="font-medium">{c.razao_social}</p><p className="text-xs text-slate-500">{doc(c.cnpj)}</p></div>
+                      {varios ? <Botao variante="link" onClick={() => removerCliente(c.id)}>Remover</Botao>
+                        : <Botao variante="secundario" onClick={() => { setParams({}); setExtras([]); setBusca('') }}>Trocar</Botao>}
+                    </div>))}
+                  {adicionando
+                    ? <div className="flex gap-2 pt-1"><input className="campo" autoFocus placeholder="Nome ou CNPJ do outro cliente" value={busca} onChange={e => setBusca(e.target.value)} />
+                        <Botao variante="secundario" onClick={() => { setAdicionando(false); setBusca('') }}>Cancelar</Botao></div>
+                    : <Botao variante="link" onClick={() => setAdicionando(true)}>+ Adicionar outro cliente (recibo único)</Botao>}
+                  {adicionando && sugestoes.length > 0 && <ul className="absolute left-4 right-4 z-10 mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                    {sugestoes.map(c => <li key={c.id}><button className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => escolher(c.id)}>
+                      {c.razao_social} <span className="text-xs text-slate-400">{doc(c.cnpj)}</span></button></li>)}
+                  </ul>}
+                </div>) : <>
                   <input className="campo" autoFocus placeholder="Digite o nome ou CNPJ do cliente" value={busca} onChange={e => setBusca(e.target.value)} />
                   {sugestoes.length > 0 && <ul className="absolute left-4 right-4 z-10 mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
-                    {sugestoes.map(c => <li key={c.id}><button className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => setParams({ cliente: c.id })}>
+                    {sugestoes.map(c => <li key={c.id}><button className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => escolher(c.id)}>
                       {c.razao_social} <span className="text-xs text-slate-400">{doc(c.cnpj)}</span></button></li>)}
                   </ul>}
                 </>}
@@ -168,15 +201,16 @@ export default function Recebimentos() {
 
           {modo === 'cliente' && clienteId && (
             <Cartao titulo="Itens em aberto" acoes={abertos?.length ? <Botao variante="link" onClick={marcarTodos}>Marcar todos</Botao> : null}>
-              {!abertos ? <Carregando /> : abertos.length === 0 ? <Vazio texto="Este cliente não tem nada em aberto." /> :
+              {!abertos ? <Carregando /> : abertos.length === 0 ? <Vazio texto={varios ? 'Estes clientes não têm nada em aberto.' : 'Este cliente não tem nada em aberto.'} /> :
                 <div className="overflow-x-auto">
                   <table className="tabela">
-                    <thead><tr><th /><th>Item</th><th>Comp.</th><th className="text-right">Saldo</th><th className="text-right">Receber (R$)</th><th className="w-28">{integral ? 'Desconto (integral)' : 'Desconto'}</th></tr></thead>
+                    <thead><tr><th />{varios && <th>Cliente</th>}<th>Item</th><th>Comp.</th><th className="text-right">Saldo</th><th className="text-right">Receber (R$)</th><th className="w-28">{integral ? 'Desconto (integral)' : 'Desconto'}</th></tr></thead>
                     <tbody>{abertos.map(l => {
                       const s = sel[l.id]
                       return (
                         <tr key={l.id} className={s?.marcado ? 'bg-marca-50' : ''}>
                           <td><input type="checkbox" checked={!!s?.marcado} onChange={e => marcar(l, e.target.checked)} /></td>
+                          {varios && <td className="max-w-[12rem] truncate" title={l.cliente}>{l.cliente}</td>}
                           <td className="max-w-[14rem] truncate">{l.tipo === 'despesa' ? <span className="mr-1 text-xs text-slate-400">Extra ·</span> : null}{l.descricao}</td>
                           <td className="num" title={`${l.situacao} · vencimento ${data(l.venc)}`}><span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${l.situacao === 'Atrasado' ? 'bg-red-500' : l.situacao === 'Pago Parcial' ? 'bg-amber-500' : 'bg-sky-500'}`} />{comp(l.comp)}</td>
                           <td className="num text-right">{moeda(l.saldo)}</td>

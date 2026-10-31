@@ -42,7 +42,7 @@ export type Despesa = {
   em_atraso: boolean; cliente_telefone: string | null
 }
 
-export type ReciboItem = { tipo: string; descricao: string; valor: number; desconto: number; competencia: string | null }
+export type ReciboItem = { tipo: string; descricao: string; valor: number; desconto: number; competencia: string | null; cliente_nome?: string | null }
 export type Recibo = {
   id: string; numero: number | null; cliente_id: string | null; cliente_nome: string; cliente_cnpj: string | null
   valor: number; data_pagamento: string; metodo_pagamento: string | null; observacao: string | null
