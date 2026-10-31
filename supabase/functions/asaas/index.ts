@@ -12,7 +12,7 @@ const CHAVE = Deno.env.get('ASAAS_API_KEY') || ''
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-region',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 const resposta = (corpo: unknown, status = 200) =>
