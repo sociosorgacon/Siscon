@@ -19,7 +19,8 @@ type Evento = { id: string; evento: string; payment_id: string | null; customer_
   recibo_id: string | null; recebido_em: string }
 const NOMES_EVENTO: Record<string, string> = { PAYMENT_RECEIVED: 'Pagamento recebido', PAYMENT_CONFIRMED: 'Pagamento confirmado',
   PAYMENT_REFUNDED: 'Estorno', PAYMENT_RECEIVED_IN_CASH_UNDONE: 'Recebimento desfeito', PAYMENT_CHARGEBACK_DONE: 'Chargeback' }
-const SELO_STATUS: Record<Evento['status'], string> = { processado: 'Pago', pendente: 'Pago Parcial', erro: 'Atrasado', ignorado: 'Inativo' }
+const COR_STATUS: Record<Evento['status'], string> = { processado: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  pendente: 'bg-amber-50 text-amber-700 ring-amber-200', erro: 'bg-red-50 text-red-700 ring-red-200', ignorado: 'bg-slate-100 text-slate-500 ring-slate-200' }
 const ROTULO_STATUS: Record<Evento['status'], string> = { processado: 'Baixado', pendente: 'Conferir', erro: 'Erro', ignorado: 'Ignorado' }
 
 export default function Asaas() {
@@ -73,22 +74,21 @@ function Baixas() {
       <Cartao>
         {!dados ? <Carregando /> : lista.length === 0 ? <Vazio texto={so === 'conferir' ? 'Nada aguardando conferência.' : 'Nenhum aviso do Asaas recebido ainda.'} /> :
           <div className="overflow-x-auto"><table className="tabela">
-            <thead><tr><th>Recebido em</th><th>Evento</th><th>Cliente</th><th>Venc.</th><th>Pago em</th><th className="text-right">Valor</th><th>Situação</th><th /></tr></thead>
-            <tbody>{lista.map(e => <tr key={e.id}>
-              <td className="num">{data(e.recebido_em)}</td>
-              <td>{NOMES_EVENTO[e.evento] || e.evento}</td>
-              <td className="max-w-xs truncate" title={e.descricao || ''}>{nomeDe(e.customer_id) || <span className="text-xs text-slate-400">{e.customer_id || '—'} (sem vínculo)</span>}</td>
-              <td className="num">{data(e.vencimento)}</td><td className="num">{data(e.data_pagamento)}</td>
+            <thead><tr><th>Aviso</th><th>Cliente</th><th>Venc. / Pago em</th><th className="text-right">Valor</th><th>Situação</th><th className="text-right">Ações</th></tr></thead>
+            <tbody>{lista.map(e => <tr key={e.id} className="align-top">
+              <td>{NOMES_EVENTO[e.evento] || e.evento}<span className="block text-xs text-slate-400">{data(e.recebido_em)}</span></td>
+              <td className="!whitespace-normal min-w-[10rem] max-w-[16rem]" title={e.descricao || ''}>{nomeDe(e.customer_id) || <span className="text-xs text-slate-400">{e.customer_id || '—'}<br />(sem vínculo)</span>}</td>
+              <td className="num">{data(e.vencimento)}<span className="block text-xs text-slate-400">pago {data(e.data_pagamento)}</span></td>
               <td className="num text-right">{moeda(e.valor)}</td>
-              <td className="max-w-sm"><Selo texto={SELO_STATUS[e.status]} /> <span className="ml-1 text-xs font-medium">{ROTULO_STATUS[e.status]}</span>
-                {e.mensagem && <span className="block truncate text-xs text-slate-500" title={e.mensagem}>{e.mensagem}</span>}</td>
-              <td className="space-x-3 whitespace-nowrap pr-5 text-right">
-                {(e.status === 'pendente' || e.status === 'erro') && <>
+              <td className="!whitespace-normal min-w-[12rem]"><span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${COR_STATUS[e.status]}`}>{ROTULO_STATUS[e.status]}</span>
+                {e.mensagem && <span className="mt-1 block text-xs text-slate-500">{e.mensagem}</span>}</td>
+              <td className="pr-5 text-right">
+                {(e.status === 'pendente' || e.status === 'erro') && <div className="flex flex-col items-end gap-1">
                   {e.customer_id && !nomeDe(e.customer_id) && <Botao variante="link" onClick={() => setVinc(e)}>Vincular cliente</Botao>}
                   <Botao variante="link" onClick={() => acao(() => supabase.rpc('asaas_processar', { p_id: e.id }), 'Reprocessado.')}>Reprocessar</Botao>
                   <Botao variante="link" className="!text-slate-500" onClick={() => confirm('Ignorar este aviso? Use quando a baixa já foi feita manualmente.') &&
                     acao(() => supabase.from('asaas_eventos').update({ status: 'ignorado', mensagem: 'Ignorado manualmente' }).eq('id', e.id), 'Aviso ignorado.')}>Ignorar</Botao>
-                </>}
+                </div>}
               </td>
             </tr>)}</tbody>
           </table></div>}
