@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, ok, todos } from '../lib/supabase'
 import { useApp, descricoesPadrao, type Config } from '../lib/app'
+import { baixarBackup } from '../lib/backup'
 import { hojeIso } from '../lib/format'
 import { Botao, Cabecalho, Campo, Cartao, useAviso } from '../components/ui'
 
@@ -45,14 +46,8 @@ export default function Configuracoes() {
   }
 
   async function backup() {
-    try {
-      const tabelas = ['configuracoes', 'clientes', 'honorarios', 'despesas', 'recibos', 'recibo_itens'] as const
-      const dados: Record<string, unknown> = { exportado_em: new Date().toISOString() }
-      for (const t of tabelas) dados[t] = await todos((a, b) => supabase.from(t).select('*').range(a, b))
-      const url = URL.createObjectURL(new Blob([JSON.stringify(dados)], { type: 'application/json' }))
-      Object.assign(document.createElement('a'), { href: url, download: `siscon_backup_${hojeIso()}.json` }).click()
-      URL.revokeObjectURL(url); avisar('Backup baixado. Guarde em local seguro: contém dados de clientes.')
-    } catch (e) { avisar((e as Error).message, 'erro') }
+    try { await baixarBackup(); avisar('Backup baixado. Guarde em local seguro: contém dados de clientes.') }
+    catch (e) { avisar((e as Error).message, 'erro') }
   }
 
   return (
