@@ -35,33 +35,33 @@ export default function Layout() {
   return (
     <div className="min-h-screen lg:flex">
       {aberto && <div className="fixed inset-0 z-30 bg-slate-900/40 lg:hidden" onClick={() => setAberto(false)} />}
-      <aside className={`print:hidden fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${aberto ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`print:hidden fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-gradient-to-b from-[#16244a] to-[#1b2d57] text-white transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${aberto ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="px-6 pb-5 pt-6">
-          <img src="/logo.png" alt="Orgacon Consultoria Contábil" className="w-40" />
-          <p className="mt-3 inline-block rounded-md bg-marca-50 px-2 py-0.5 text-[10px] font-semibold tracking-[.18em] text-marca-700">SISCON · HONORÁRIOS</p>
+          <span className="block rounded-lg bg-white px-3 py-2"><img src="/logo.png" alt="Orgacon Consultoria Contábil" className="w-40" /></span>
+          <p className="mt-3 inline-block rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-semibold tracking-[.18em] text-white/80">SISCON · HONORÁRIOS</p>
         </div>
         <nav className="flex-1 overflow-y-auto px-3">
           {secoes.map(s => (
             <div key={s.titulo} className="mb-5">
-              <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[.14em] text-slate-400">{s.titulo}</p>
+              <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[.14em] text-white/40">{s.titulo}</p>
               {s.itens.map(([to, nome, icone]) => (
                 <NavLink key={to} to={to} end={to === '/'} onClick={() => setAberto(false)}
                   className={({ isActive }) => `group mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${isActive
-                    ? 'bg-marca-700 font-medium text-white shadow-sm shadow-marca-900/20'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
-                  {({ isActive }) => <><Icone nome={icone} className={`h-[18px] w-[18px] ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-marca-700'}`} />{nome}</>}
+                    ? 'bg-blue-600 font-medium text-white shadow-sm shadow-black/20'
+                    : 'text-white/75 hover:bg-white/10 hover:text-white'}`}>
+                  {({ isActive }) => <><Icone nome={icone} className={`h-[18px] w-[18px] ${isActive ? 'text-white' : 'text-white/60 group-hover:text-white'}`} />{nome}</>}
                 </NavLink>
               ))}
             </div>
           ))}
         </nav>
-        <div className="flex items-center gap-3 border-t border-slate-100 px-4 py-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-marca-700 text-sm font-semibold uppercase text-white">{email[0] || '?'}</span>
+        <div className="flex items-center gap-3 border-t border-white/10 px-4 py-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 text-sm font-semibold uppercase text-white">{email[0] || '?'}</span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium text-slate-700">{email}</p>
-            <p className="text-[11px] text-slate-400">Orgacon</p>
+            <p className="truncate text-xs font-medium text-white/90">{email}</p>
+            <p className="text-[11px] text-white/50">Orgacon © {new Date().getFullYear()}</p>
           </div>
-          <button onClick={() => supabase.auth.signOut()} title="Sair" className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600">
+          <button onClick={() => supabase.auth.signOut()} title="Sair" className="rounded-md p-1.5 text-white/60 hover:bg-white/10 hover:text-red-300">
             <Icone nome="sair" />
           </button>
         </div>

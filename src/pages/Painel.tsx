@@ -154,7 +154,7 @@ function Grafico({ linhas }: { linhas: { mes: string; recebido: number; pendente
               <div key={l.mes} className="relative flex h-full flex-1 flex-col justify-end" title={`${l.mes}\nRecebido: ${moeda(l.recebido)}\nPendente: ${moeda(l.pendente)}`}>
                 <div className="flex h-full items-end justify-center gap-1.5">
                   <div className="w-full max-w-16 rounded-t bg-blue-600" style={{ height: `${(l.recebido / topo) * 100}%` }} />
-                  <div className="w-full max-w-16 rounded-t bg-amber-400" style={{ height: `${(l.pendente / topo) * 100}%` }} />
+                  <div className="w-full max-w-16 rounded-t bg-red-400" style={{ height: `${(l.pendente / topo) * 100}%` }} />
                 </div>
                 <span className="absolute inset-x-0 -bottom-6 text-center text-xs text-slate-500">{l.mes}</span>
               </div>))}
@@ -163,7 +163,7 @@ function Grafico({ linhas }: { linhas: { mes: string; recebido: number; pendente
       </div>
       <div className="mt-3 flex gap-4 text-xs text-slate-500">
         <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-blue-600" />Recebido</span>
-        <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-amber-400" />Pendente</span>
+        <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-red-400" />Pendente</span>
       </div>
     </div>
   )

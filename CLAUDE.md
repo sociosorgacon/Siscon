@@ -37,7 +37,7 @@ Ordem de criação: `schema.sql` → importação → `002_regras.sql` → `003_
 - Excel exportado: abas organizadas, altura de linha padrão (sem quebra automática).
 
 ## Identidade visual
-Cores da logo: azul **#204879** (`marca-700`) e cinza **#73767B** (`cinza`). Logo em `public/logo.png`. Visual moderno/corporativo: menu lateral branco com ícones (`src/components/icones.tsx`), componentes base em `src/components/ui.tsx`, PDFs com cabeçalho padrão em `src/lib/pdf-base.ts`.
+Cores da logo: azul **#204879** (`marca-700`) e cinza **#73767B** (`cinza`). Logo em `public/logo.png`. Visual no estilo do Base44 (pedido do usuário, 03/11/2026): menu lateral **azul-escuro** (item ativo azul vivo, logo em quadro branco) com ícones (`src/components/icones.tsx`), componentes base em `src/components/ui.tsx`, PDFs com cabeçalho padrão em `src/lib/pdf-base.ts`. Painel com **faixa azul no topo** (título, data, Backup, logo), gráfico Recebido (azul) × Pendente (vermelho).
 
 ## Pendências / próximos passos
 **Manter esta lista atualizada automaticamente (sem perguntar ao usuário):** ao concluir ou iniciar uma pendência, marcar aqui e mover para "Concluídas".
