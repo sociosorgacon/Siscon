@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { supabase, ok, todos, type Cliente, type Honorario, type Despesa } from '../lib/supabase'
 import { useApp, useDados } from '../lib/app'
 import { chamarAsaas, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/asaas'
+import AsaasExtrato from './AsaasExtrato'
 import { moeda, data, comp, doc, normaliza } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
 import { Abas, Botao, Cabecalho, Campo, Cartao, Carregando, Indicador, Modal, Selo, Vazio, useAviso } from '../components/ui'
@@ -24,11 +25,11 @@ const COR_STATUS: Record<Evento['status'], string> = { processado: 'bg-emerald-5
 const ROTULO_STATUS: Record<Evento['status'], string> = { processado: 'Baixado', pendente: 'Conferir', erro: 'Erro', ignorado: 'Ignorado' }
 
 export default function Asaas() {
-  const [aba, setAba] = useState<'baixas' | 'conferencia'>('baixas')
+  const [aba, setAba] = useState<'baixas' | 'extrato' | 'conferencia'>('baixas')
   return (
     <>
-      <Abas abas={[['baixas', 'Baixas automáticas'], ['conferencia', 'Conferência de assinaturas']] as const} atual={aba} mudar={setAba} />
-      {aba === 'baixas' ? <Baixas /> : <Conferencia />}
+      <Abas abas={[['baixas', 'Baixas automáticas'], ['extrato', 'Importar extrato (OFX)'], ['conferencia', 'Conferência de assinaturas']] as const} atual={aba} mudar={setAba} />
+      {aba === 'baixas' ? <Baixas /> : aba === 'extrato' ? <AsaasExtrato /> : <Conferencia />}
     </>
   )
 }

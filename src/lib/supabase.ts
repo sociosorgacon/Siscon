@@ -24,7 +24,7 @@ export type Cliente = {
   id: string; cnpj: string; razao_social: string; nome_fantasia: string | null; email: string | null
   telefone: string | null; logradouro: string | null; municipio: string | null; uf: string | null
   situacao: string | null; status: 'Ativo' | 'Inativo'; percentual_honorario: number; dia_vencimento: number
-  multa_por_atraso: boolean; asaas_customer_id: string | null
+  multa_por_atraso: boolean; asaas_customer_id: string | null; asaas_nome?: string | null
 }
 
 export type Honorario = {
