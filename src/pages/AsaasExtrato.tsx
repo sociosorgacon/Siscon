@@ -62,25 +62,50 @@ function propor(recebs: Receb[], escolha: Record<string, string>, abertos: Abert
     const base = { ...r, cliente, itens: [] as ItemBaixa[], juros: 0, obs: '' }
     if (baixadas.has(r.fatura)) return { ...base, situacao: 'ja_baixado' as Situacao, obs: 'Esta fatura já tem baixa no Siscon.' }
     if (!cliente) return { ...base, situacao: 'sem_cliente' as Situacao, obs: 'Nome do Asaas não encontrado no cadastro. Escolha o cliente.' }
+    const doCliente = abertos.filter(x => x.cid === cliente && (saldo.get(x.id) || 0) > 0.009)
+    if (!doCliente.length) return { ...base, situacao: 'sem_debito' as Situacao, obs: 'Cliente sem débito em aberto: provavelmente já baixado (Base44 ou manual).' }
+
+    // 1) Regra geral: do item mais antigo para o mais novo
     let resto = r.valor, parcial = false
-    const itens: ItemBaixa[] = []
-    for (const a of abertos.filter(x => x.cid === cliente)) {
+    let itens: ItemBaixa[] = []
+    for (const a of doCliente) {
       const s = saldo.get(a.id) || 0
-      if (s <= 0.009) continue
       if (resto <= 0.009) break
       const rot = `${a.desc} ${comp(a.comp)}`
-      if (resto >= s - 0.009) { itens.push({ tipo: a.tipo, id: a.id, valor: r2(s), desconto: 0, rotulo: rot }); resto = r2(resto - s); saldo.set(a.id, 0); continue }
+      if (resto >= s - 0.009) { itens.push({ tipo: a.tipo, id: a.id, valor: r2(s), desconto: 0, rotulo: rot }); resto = r2(resto - s); continue }
       const falta = r2(s - resto)
       if (a.tipo === 'honorario' && falta <= a.juros + 1) {
         itens.push({ tipo: a.tipo, id: a.id, valor: resto, desconto: falta, rotulo: `${rot} (desconto ${moeda(falta)})` })
       } else { itens.push({ tipo: a.tipo, id: a.id, valor: resto, desconto: 0, rotulo: `${rot} (parcial)` }); parcial = true }
-      saldo.set(a.id, 0); resto = 0
+      resto = 0
     }
-    const juros = resto > 0.009 ? r2(resto) : 0
-    if (!itens.length) return { ...base, situacao: 'sem_debito' as Situacao, obs: 'Cliente sem débito em aberto: provavelmente já baixado (Base44 ou manual).' }
-    const altoDemais = juros > Math.max(5, r.valor * 0.1)
-    return { ...base, itens, juros, situacao: (parcial || altoDemais ? 'conferir' : 'pronto') as Situacao,
-      obs: parcial ? 'Valor menor que o débito: baixa parcial.' : altoDemais ? `Sobram ${moeda(juros)} além dos débitos em aberto.` : '' }
+    let juros = resto > 0.009 ? r2(resto) : 0
+    let altoDemais = juros > Math.max(5, r.valor * 0.1)
+    let obs = parcial ? 'Valor menor que o débito: baixa parcial.' : altoDemais ? `Sobram ${moeda(juros)} além dos débitos em aberto.` : ''
+
+    // 2) Antes de aceitar baixa parcial (ou sobra alta): o valor pago é o de um honorário, sem as despesas extras?
+    //    Se for, baixa só esse honorário (integral) e as despesas continuam em aberto.
+    if (parcial || altoDemais) {
+      const hon = doCliente.find(a => {
+        if (a.tipo !== 'honorario') return false
+        const s = saldo.get(a.id) || 0
+        return r.valor >= s - a.juros - 1 && r.valor <= s + Math.max(5, s * 0.1)
+      })
+      if (hon) {
+        const s = saldo.get(hon.id) || 0
+        const pago = r2(Math.min(r.valor, s)), desconto = r2(s - pago)
+        itens = [{ tipo: 'honorario', id: hon.id, valor: pago, desconto,
+          rotulo: `Honorário ${comp(hon.comp)}${desconto > 0.009 ? ` (desconto ${moeda(desconto)})` : ''}` }]
+        juros = r.valor > s ? r2(r.valor - s) : 0
+        parcial = false; altoDemais = false
+        const ficam = doCliente.filter(a => a.id !== hon.id)
+        obs = `Valor corresponde ao honorário de ${comp(hon.comp)} sem as despesas extras.` +
+          (ficam.length ? ` Continuam em aberto: ${ficam.map(a => `${a.desc} ${comp(a.comp)}`).join(', ')}.` : '')
+      }
+    }
+
+    for (const i of itens) saldo.set(i.id, r2((saldo.get(i.id) || 0) - i.valor - i.desconto))
+    return { ...base, itens, juros, obs, situacao: (parcial || altoDemais ? 'conferir' : 'pronto') as Situacao }
   })
 }
 
