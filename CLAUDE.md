@@ -9,6 +9,7 @@ Migrado do Base44 (siscon.base44.app) em 30–31/10/2026. Usuários: o dono e os
 - **Front:** React 19 + Vite + TypeScript + Tailwind 4 (`src/`). Sem backend próprio: tudo via Supabase.
 - **Banco/login:** Supabase (projeto `glffjwcikoyggdfuzgyw`, região São Paulo). RLS: só usuários logados. Cadastro público desativado; usuários criados em Authentication → Users.
 - **Hospedagem:** Vercel, conectada ao GitHub `sociosorgacon/Siscon`. **Todo push na `main` publica sozinho** (~1 min).
+- **Endereço:** https://siscon-tau.vercel.app/ (domínio próprio disponível: `orgaconcontabilidade.com.br`, sem site; sugerido `siscon.orgaconcontabilidade.com.br` via CNAME na Vercel — ao trocar, atualizar Site URL/Redirect URLs no Supabase Auth).
 - URL e chave *publishable* do Supabase ficam em `src/lib/supabase.ts` (são públicas por natureza). **Nunca** colocar a secret/service_role key no código.
 
 ## Banco de dados (pasta `supabase/`)
