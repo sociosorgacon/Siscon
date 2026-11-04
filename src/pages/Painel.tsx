@@ -158,26 +158,26 @@ function Grafico({ linhas, sel, escolher }: { linhas: { mes: string; recebido: n
   const pct = (l: { recebido: number; pendente: number }) => { const t = l.recebido + l.pendente; return t ? Math.round((l.recebido / t) * 100) : 0 }
   const atual = linhas.find(l => l.mes === sel) || linhas[linhas.length - 1]
   const media = linhas.length ? Math.round(linhas.reduce((s, l) => s + pct(l), 0) / linhas.length) : 0
-  const ALT = 220 // px da área de plotagem
+  const ALT = 130 // px da área de plotagem
 
   return (
-    <div className="p-5">
+    <div className="px-5 py-4">
       {/* Destaques: o número que importa antes do gráfico */}
-      {atual && <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg bg-slate-50 px-4 py-3">
+      {atual && <div className="mb-3 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-lg bg-slate-50 px-3 py-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Recebido da competência {atual.mes}</p>
-          <p className="mt-1 flex items-baseline gap-2"><span className="num text-2xl font-bold text-slate-900">{pct(atual)}%</span>
+          <p className="flex items-baseline gap-2"><span className="num text-lg font-bold text-slate-900">{pct(atual)}%</span>
             <span className={`text-xs font-medium ${pct(atual) >= media ? 'text-emerald-700' : 'text-red-700'}`}>{pct(atual) >= media ? '▲' : '▼'} média de 6 meses: {media}%</span></p>
         </div>
-        <div className="rounded-lg bg-slate-50 px-4 py-3">
+        <div className="rounded-lg bg-slate-50 px-3 py-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Recebido</p>
-          <p className="num mt-1 text-2xl font-bold text-slate-900">{moeda(atual.recebido)}</p></div>
-        <div className="rounded-lg bg-slate-50 px-4 py-3">
+          <p className="num text-lg font-bold text-slate-900">{moeda(atual.recebido)}</p></div>
+        <div className="rounded-lg bg-slate-50 px-3 py-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Ainda em aberto</p>
-          <p className="num mt-1 text-2xl font-bold text-slate-900">{moeda(atual.pendente)}</p></div>
+          <p className="num text-lg font-bold text-slate-900">{moeda(atual.pendente)}</p></div>
       </div>}
 
-      <div className="mb-3 flex items-center gap-4 text-xs text-slate-600">
+      <div className="mb-2 flex items-center gap-4 text-xs text-slate-600">
         <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-[#2563eb]" />Recebido</span>
         <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-[#ef4444]" />Em aberto</span>
         <span className="ml-auto text-slate-400">Clique numa barra para ver a competência</span>
