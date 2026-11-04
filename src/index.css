@@ -21,8 +21,8 @@ body { @apply bg-[#f4f6fa] text-slate-800 antialiased; }
 @layer components {
 /* Tabelas */
 .tabela { @apply w-full text-sm; }
-.tabela thead th { @apply sticky top-0 z-[1] bg-slate-50/95 text-left font-semibold text-slate-500 text-[11px] uppercase tracking-wider px-3.5 py-2.5 border-b border-slate-200 whitespace-nowrap backdrop-blur; }
-.tabela td { @apply px-3.5 py-2.5 border-b border-slate-100 whitespace-nowrap; }
+.tabela thead th { @apply sticky top-0 z-[1] bg-slate-50/95 text-left font-semibold text-slate-500 text-[11px] uppercase tracking-wider px-3 py-2.5 border-b border-slate-200 whitespace-nowrap backdrop-blur; }
+.tabela td { @apply px-3 py-3 border-b border-slate-100 whitespace-nowrap; }
 .tabela tbody tr { @apply transition-colors; }
 .tabela tbody tr:hover { @apply bg-marca-50/60; }
 .tabela tbody tr:last-child td { @apply border-b-0; }
@@ -35,7 +35,7 @@ textarea.campo { @apply h-auto py-2; }
 input[type="checkbox"] { @apply h-4 w-4 rounded border-slate-300 accent-marca-700; }
 
 /* Barra de filtros dentro de cartões */
-.filtros { @apply flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white px-4 py-3; }
+.filtros { @apply flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3; }
 }
 
 @media print {

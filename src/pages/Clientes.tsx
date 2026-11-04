@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { supabase, ok, todos, type Cliente } from '../lib/supabase'
 import { useApp, useDados } from '../lib/app'
 import { moeda, doc, normaliza } from '../lib/format'
-import { Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Selo, Vazio, useAviso } from '../components/ui'
+import { Avatar, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
+import { Icone } from '../components/icones'
 
 const novo = (): Partial<Cliente> => ({ status: 'Ativo', percentual_honorario: 0, dia_vencimento: 10, multa_por_atraso: true })
 
@@ -24,14 +25,24 @@ export default function Clientes() {
 
   return (
     <>
-      <Cabecalho titulo="Clientes" subtitulo={dados && `${lista.length} clientes · honorários mensais: ${moeda(totalMensal)}`}
+      <Cabecalho icone="clientes" titulo="Clientes" subtitulo="Cadastro, percentual do salário mínimo e dia de vencimento"
         acoes={<Botao onClick={() => setEdit(novo())}>Novo cliente</Botao>} />
+      {dados && (() => {
+        const ativos = dados.filter(c => c.status === 'Ativo'), mensal = ativos.reduce((s, c) => s + sm * c.percentual_honorario / 100, 0)
+        return <Resumo itens={[
+          { rotulo: 'Clientes ativos', valor: ativos.length, detalhe: `${dados.length - ativos.length} inativos`, tom: 'azul' },
+          { rotulo: 'Honorários mensais', valor: moeda(mensal), detalhe: 'soma dos clientes ativos', tom: 'verde' },
+          { rotulo: 'Honorário médio', valor: moeda(ativos.length ? mensal / ativos.length : 0), detalhe: 'por cliente ativo', tom: 'cinza' },
+          { rotulo: 'Sem boleto vinculado', valor: ativos.filter(c => !c.asaas_customer_id && !c.asaas_nome).length, detalhe: 'sem vínculo com o Asaas', tom: 'laranja' },
+        ]} />
+      })()}
       <Cartao>
         <div className="filtros">
-          <input className="campo max-w-sm" placeholder="Buscar por nome ou CNPJ/CPF" value={busca} onChange={e => setBusca(e.target.value)} />
-          <select className="campo w-36" value={filtro} onChange={e => setFiltro(e.target.value as typeof filtro)}>
-            <option value="Ativo">Ativos</option><option value="Inativo">Inativos</option><option value="">Todos</option>
-          </select>
+          <Pilulas atual={filtro} mudar={setFiltro} opcoes={[
+            ['Ativo', 'Ativos', (dados || []).filter(c => c.status === 'Ativo').length], ['Inativo', 'Inativos', (dados || []).filter(c => c.status === 'Inativo').length], ['', 'Todos', (dados || []).length],
+          ] as const} />
+          <span className="text-xs text-slate-500">{lista.length} na lista · {moeda(totalMensal)}/mês</span>
+          <Busca valor={busca} mudar={setBusca} placeholder="Buscar por nome ou CNPJ/CPF" className="ml-auto max-w-sm" />
         </div>
         {!dados ? <Carregando /> : lista.length === 0 ? <Vazio /> :
           <div className="overflow-x-auto">
@@ -39,14 +50,15 @@ export default function Clientes() {
               <thead><tr><th>Cliente</th><th>CNPJ/CPF</th><th>Município</th><th className="text-right">% SM</th><th className="text-right">Honorário</th><th>Venc.</th><th>Status</th><th /></tr></thead>
               <tbody>{lista.map(c => (
                 <tr key={c.id}>
-                  <td className="max-w-xs truncate font-medium" title={c.razao_social}>{c.razao_social}</td>
+                  <td className="max-w-[20rem]" title={c.razao_social}><span className="flex items-center gap-2.5"><Avatar nome={c.razao_social} />
+                    <span className="min-w-0"><span className="block truncate font-medium text-slate-800">{c.razao_social}</span>{c.nome_fantasia && <span className="block truncate text-[11px] text-slate-400">{c.nome_fantasia}</span>}</span></span></td>
                   <td className="num">{doc(c.cnpj)}</td>
                   <td>{c.municipio ? `${c.municipio}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
                   <td className="num text-right">{c.percentual_honorario.toLocaleString('pt-BR')}%</td>
-                  <td className="num text-right">{moeda(sm * c.percentual_honorario / 100)}</td>
+                  <td className="num text-right font-medium text-slate-800">{moeda(sm * c.percentual_honorario / 100)}</td>
                   <td className="num">dia {c.dia_vencimento}</td>
                   <td><Selo texto={c.status} /></td>
-                  <td className="pr-5 text-right"><Botao variante="link" onClick={() => setEdit(c)}>Editar</Botao></td>
+                  <td className="pr-4 text-right"><button onClick={() => setEdit(c)} title="Editar" aria-label="Editar" className="rounded-md p-1.5 text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 hover:text-blue-700"><Icone nome="editar" className="h-3.5 w-3.5" /></button></td>
                 </tr>))}
               </tbody>
             </table>

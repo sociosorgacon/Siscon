@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Despesa } from '../lib/supabase'
 import { useApp, useDados, descricoesPadrao } from '../lib/app'
 import { moeda, data, comp, compParaIso, hojeIso, normaliza } from '../lib/format'
-import { Abas, Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Selo, Vazio, useAviso } from '../components/ui'
+import { Abas, Avatar, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
+import { Icone } from '../components/icones'
 
 type Fixa = { id: string; cliente_id: string; descricao: string; valor: number; observacoes: string | null; ativa: boolean; clientes?: { razao_social: string } }
 type ClienteMin = Pick<Cliente, 'id' | 'razao_social' | 'status'>
@@ -40,14 +41,26 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
 
   return (
     <>
-      <Cabecalho titulo="Despesas extras" subtitulo={dados && `${lista.length} lançamentos · saldo em aberto ${moeda(lista.reduce((s, d) => s + d.saldo, 0))}`}
+      <Cabecalho icone="despesas" titulo="Despesas extras" subtitulo="IRPF, alterações, certificados e outros serviços cobrados à parte"
         acoes={<Botao onClick={() => setEdit({})}>Nova despesa</Botao>} />
+      {dados && (() => {
+        const ab = dados.filter(d => d.saldo > 0), mes = new Date().toISOString().slice(0, 7)
+        const doMes = dados.filter(d => d.data.startsWith(mes))
+        return <Resumo itens={[
+          { rotulo: 'Em aberto', valor: moeda(ab.reduce((s, d) => s + d.saldo, 0)), detalhe: `${ab.length} lançamentos`, tom: 'laranja' },
+          { rotulo: 'Clientes com despesa', valor: new Set(ab.map(d => d.cliente_id)).size, detalhe: 'com saldo em aberto', tom: 'azul' },
+          { rotulo: 'Lançado no mês', valor: moeda(doMes.reduce((s, d) => s + d.valor, 0)), detalhe: `${doMes.length} lançamentos`, tom: 'cinza' },
+          { rotulo: 'Já recebido', valor: moeda(dados.reduce((s, d) => s + d.valor_pago, 0)), detalhe: 'total pago das despesas', tom: 'verde' },
+        ]} />
+      })()}
       <Cartao>
         <div className="filtros">
-          <select className="campo w-40" value={status} onChange={e => setStatus(e.target.value)}>
-            <option value="abertas">Em aberto</option><option>Pendente</option><option>Pago Parcial</option><option>Pago</option><option value="">Todas</option>
-          </select>
-          <input className="campo max-w-sm" placeholder="Buscar cliente ou descrição" value={busca} onChange={e => setBusca(e.target.value)} />
+          <Pilulas atual={status} mudar={setStatus} opcoes={[
+            ['abertas', 'Em aberto', (dados || []).filter(d => d.saldo > 0).length], ['Pendente', 'Pendente', (dados || []).filter(d => d.status === 'Pendente').length],
+            ['Pago Parcial', 'Parcial', (dados || []).filter(d => d.status === 'Pago Parcial').length], ['Pago', 'Pago', (dados || []).filter(d => d.status === 'Pago').length], ['', 'Todas', (dados || []).length],
+          ] as const} />
+          <span className="text-xs text-slate-500">{lista.length} na lista · em aberto {moeda(lista.reduce((s, d) => s + d.saldo, 0))}</span>
+          <Busca valor={busca} mudar={setBusca} placeholder="Buscar cliente ou descrição" className="ml-auto max-w-sm" />
         </div>
         {!dados ? <Carregando /> : lista.length === 0 ? <Vazio /> :
           <div className="overflow-x-auto">
@@ -56,16 +69,16 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
               <tbody>{lista.map(d => (
                 <tr key={d.id}>
                   <td className="num">{data(d.data)}</td>
-                  <td className="max-w-[13rem] truncate font-medium text-slate-800" title={d.cliente_nome}>{d.cliente_nome}</td>
-                  <td className="max-w-[13rem] truncate" title={d.descricao}>{d.descricao}</td>
+                  <td className="max-w-[13rem]" title={d.cliente_nome}><span className="flex items-center gap-2.5"><Avatar nome={d.cliente_nome} /><span className="truncate font-medium text-slate-800">{d.cliente_nome}</span></span></td>
+                  <td className="max-w-[12rem] truncate text-slate-700" title={d.descricao}>{d.descricao}{d.observacoes && <span className="block truncate text-[11px] text-slate-400">{d.observacoes}</span>}</td>
                   <td className="num">{comp(d.competencia)}</td>
                   <td className="num text-right">{moeda(d.valor)}</td>
                   <td className="num text-right font-medium">{d.saldo ? moeda(d.saldo) : '—'}</td>
                   <td><Selo texto={d.status} /></td>
-                  <td className="space-x-3 pr-5 text-right">
-                    {d.saldo > 0 && <Link className="text-sm text-marca-700 hover:underline" to={`/recebimentos?cliente=${d.cliente_id}`}>Receber</Link>}
-                    <Botao variante="link" onClick={() => setEdit(d)}>Editar</Botao>
-                  </td>
+                  <td className="pr-4 text-right"><span className="inline-flex items-center gap-1.5">
+                    {d.saldo > 0 && <Link className="rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100" to={`/recebimentos?cliente=${d.cliente_id}`}>Receber</Link>}
+                    <button onClick={() => setEdit(d)} title="Editar" aria-label="Editar" className="rounded-md p-1.5 text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 hover:text-blue-700"><Icone nome="editar" className="h-3.5 w-3.5" /></button>
+                  </span></td>
                 </tr>))}</tbody>
             </table>
           </div>}
@@ -194,7 +207,7 @@ function Fixas({ clientes }: { clientes: ClienteMin[] }) {
 
   return (
     <>
-      <Cabecalho titulo="Despesas fixas" subtitulo="Lançadas automaticamente ao avançar a competência (ou pelo botão)"
+      <Cabecalho icone="despesas" titulo="Despesas fixas" subtitulo="Lançadas automaticamente ao avançar a competência (ou pelo botão)"
         acoes={<><Botao variante="secundario" onClick={gerar}>Gerar em {config.competencia_atual}</Botao><Botao onClick={() => setEdit({ ativa: true, valor: 0 })}>Nova despesa fixa</Botao></>} />
       <Cartao>
         {!dados ? <Carregando /> : dados.length === 0 ? <Vazio texto="Nenhuma despesa fixa cadastrada." /> :

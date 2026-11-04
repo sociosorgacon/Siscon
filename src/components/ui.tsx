@@ -26,12 +26,15 @@ export function Cartao({ titulo, acoes, children, className = '' }: { titulo?: R
   )
 }
 
-export function Cabecalho({ titulo, subtitulo, acoes }: { titulo: string; subtitulo?: ReactNode; acoes?: ReactNode }) {
+export function Cabecalho({ titulo, subtitulo, acoes, icone }: { titulo: string; subtitulo?: ReactNode; acoes?: ReactNode; icone?: NomeIcone }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{titulo}</h1>
-        {subtitulo && <p className="mt-1 text-sm text-slate-500">{subtitulo}</p>}
+      <div className="flex items-center gap-3">
+        {icone && <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#1c3260] to-[#2563eb] text-white shadow-sm shadow-blue-900/20"><Icone nome={icone} className="h-5 w-5" /></span>}
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{titulo}</h1>
+          {subtitulo && <p className="mt-0.5 text-sm text-slate-500">{subtitulo}</p>}
+        </div>
       </div>
       <div className="flex flex-wrap gap-2">{acoes}</div>
     </div>
@@ -137,4 +140,53 @@ export function Abas<T extends string>({ abas, atual, mudar }: { abas: readonly 
       ))}
     </div>
   )
+}
+
+/** Linha de mini-indicadores no topo das páginas de cadastro */
+const tonsResumo = {
+  azul: 'border-l-blue-600', verde: 'border-l-emerald-500', vermelho: 'border-l-red-500', laranja: 'border-l-amber-500', cinza: 'border-l-slate-400',
+}
+export function Resumo({ itens }: { itens: { rotulo: string; valor: ReactNode; detalhe?: ReactNode; tom?: keyof typeof tonsResumo }[] }) {
+  return (
+    <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {itens.map(i => (
+        <div key={i.rotulo} className={`rounded-xl border border-slate-200/80 border-l-4 ${tonsResumo[i.tom || 'azul']} bg-white px-4 py-3 shadow-[0_1px_2px_rgba(16,24,40,.04)]`}>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{i.rotulo}</p>
+          <p className="num mt-1 text-xl font-semibold tracking-tight text-slate-900">{i.valor}</p>
+          {i.detalhe && <p className="mt-0.5 text-xs text-slate-500">{i.detalhe}</p>}
+        </div>))}
+    </div>
+  )
+}
+
+/** Campo de busca com ícone de lupa */
+export function Busca({ valor, mudar, placeholder = 'Buscar', className = 'max-w-sm' }: { valor: string; mudar: (v: string) => void; placeholder?: string; className?: string }) {
+  return (
+    <div className={`relative w-full ${className}`}>
+      <Icone nome="busca" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <input className="campo !pl-9" placeholder={placeholder} value={valor} onChange={e => mudar(e.target.value)} />
+    </div>
+  )
+}
+
+/** Botões de filtro em formato de pílula */
+export function Pilulas<T extends string>({ opcoes, atual, mudar }: { opcoes: readonly (readonly [T, string, number?])[]; atual: T; mudar: (v: T) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
+      {opcoes.map(([v, t, n]) => (
+        <button key={v} type="button" onClick={() => mudar(v)}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${atual === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+          {t}{n != null && <span className={`ml-1.5 rounded-full px-1.5 text-[10px] ${atual === v ? 'bg-blue-50 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>{n}</span>}
+        </button>))}
+    </div>
+  )
+}
+
+/** Iniciais do cliente num círculo (cor fixa por nome) */
+const coresAvatar = ['bg-blue-100 text-blue-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-800', 'bg-violet-100 text-violet-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700', 'bg-teal-100 text-teal-700', 'bg-orange-100 text-orange-700']
+export function Avatar({ nome }: { nome: string }) {
+  const p = (nome || '?').replace(/[^A-Za-zÀ-ú ]/g, ' ').split(/\s+/).filter(w => w.length > 1 && !/^(de|da|do|dos|das|e|ltda|me|eireli|cia)$/i.test(w))
+  const ini = ((p[0]?.[0] || nome[0] || '?') + (p[1]?.[0] || '')).toUpperCase()
+  let h = 0; for (const ch of nome) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${coresAvatar[h % coresAvatar.length]}`}>{ini}</span>
 }

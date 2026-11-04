@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Honorario } from '../lib/supabase'
 import { useApp, useDados } from '../lib/app'
-import { moeda, data, comp, compParaIso, ultimasCompetencias, normaliza } from '../lib/format'
-import { Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Selo, Vazio, useAviso } from '../components/ui'
+import { moeda, data, comp, compParaIso, ultimasCompetencias, normaliza, doc } from '../lib/format'
+import { Avatar, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
+import { Icone } from '../components/icones'
 
 export default function Honorarios() {
   const { config, recarregarConfig } = useApp()
@@ -27,6 +28,8 @@ export default function Honorarios() {
     (!situacao || h.situacao === situacao || (situacao === 'abertos' && h.saldo > 0)) &&
     (!busca || normaliza(`${h.cliente_nome} ${h.cliente_cnpj}`).includes(normaliza(busca)))), [dados, situacao, busca])
 
+  const conta = (f: (h: Honorario) => boolean) => (dados || []).filter(h => (!busca || normaliza(`${h.cliente_nome} ${h.cliente_cnpj}`).includes(normaliza(busca))) && f(h)).length
+  const todosTot = (dados || []).reduce((s, h) => ({ valor: s.valor + h.valor_atualizado_calc, pago: s.pago + h.valor_pago_acumulado, saldo: s.saldo + h.saldo, atr: s.atr + (h.situacao === 'Atrasado' ? h.saldo : 0), nAtr: s.nAtr + (h.situacao === 'Atrasado' ? 1 : 0) }), { valor: 0, pago: 0, saldo: 0, atr: 0, nAtr: 0 })
   const tot = lista.reduce((s, h) => ({ valor: s.valor + h.valor_atualizado_calc, pago: s.pago + h.valor_pago_acumulado, saldo: s.saldo + h.saldo }), { valor: 0, pago: 0, saldo: 0 })
 
   async function gerar() {
@@ -52,23 +55,29 @@ export default function Honorarios() {
 
   return (
     <>
-      <Cabecalho titulo="Honorários" subtitulo="Valor = salário mínimo × % do cliente · vencimento no mês seguinte"
+      <Cabecalho icone="honorarios" titulo="Honorários" subtitulo="Valor = salário mínimo × % do cliente · vencimento no mês seguinte"
         acoes={<>
           <Botao variante="secundario" onClick={() => setNovo(true)}>Geração avulsa</Botao>
           <Botao variante="secundario" onClick={gerar} disabled={ocupado || !competencia}>Gerar competência {competencia}</Botao>
           <Botao onClick={avancar} disabled={ocupado}>Avançar competência</Botao>
         </>} />
+      {dados && <Resumo itens={[
+        { rotulo: competencia ? `Faturado ${competencia}` : 'Faturado', valor: moeda(todosTot.valor), detalhe: `${dados.length} honorários`, tom: 'azul' },
+        { rotulo: 'Recebido', valor: moeda(todosTot.pago), detalhe: todosTot.valor ? `${Math.round(todosTot.pago / todosTot.valor * 100)}% do faturado` : undefined, tom: 'verde' },
+        { rotulo: 'Em aberto', valor: moeda(todosTot.saldo), detalhe: `${dados.filter(h => h.saldo > 0).length} honorários`, tom: 'laranja' },
+        { rotulo: 'Atrasado', valor: moeda(todosTot.atr), detalhe: `${todosTot.nAtr} honorários`, tom: 'vermelho' },
+      ]} />}
       <Cartao>
         <div className="filtros">
-          <select className="campo w-56" value={competencia} onChange={e => setCompSel(e.target.value)}>
+          <select className="campo w-52" value={competencia} onChange={e => setCompSel(e.target.value)}>
             <option value="">Todas as competências</option>
             {comps.map(c => <option key={c} value={c}>Competência {c}</option>)}
           </select>
-          <select className="campo w-44" value={situacao} onChange={e => setSituacao(e.target.value)}>
-            <option value="">Todas as situações</option><option value="abertos">Em aberto (saldo)</option>
-            <option>Pendente</option><option>Atrasado</option><option>Pago Parcial</option><option>Pago</option>
-          </select>
-          <input className="campo max-w-xs" placeholder="Buscar cliente" value={busca} onChange={e => setBusca(e.target.value)} />
+          <Pilulas atual={situacao} mudar={setSituacao} opcoes={[
+            ['', 'Todos', conta(() => true)], ['abertos', 'Em aberto', conta(h => h.saldo > 0)], ['Pendente', 'Pendente', conta(h => h.situacao === 'Pendente')],
+            ['Atrasado', 'Atrasado', conta(h => h.situacao === 'Atrasado')], ['Pago Parcial', 'Parcial', conta(h => h.situacao === 'Pago Parcial')], ['Pago', 'Pago', conta(h => h.situacao === 'Pago')],
+          ] as const} />
+          <Busca valor={busca} mudar={setBusca} placeholder="Buscar cliente ou CNPJ" className="ml-auto max-w-xs" />
         </div>
         {!dados ? <Carregando /> : lista.length === 0 ? <Vazio texto={`Nenhum honorário${competencia ? ' em ' + competencia : ''}. Use "Gerar competência".`} /> :
           <div className="overflow-x-auto">
@@ -77,7 +86,8 @@ export default function Honorarios() {
                 <th className="text-right">Pago</th><th className="text-right">Saldo</th><th>Situação</th><th /></tr></thead>
               <tbody>{lista.map(h => (
                 <tr key={h.id}>
-                  <td className="max-w-[15rem] truncate font-medium text-slate-800" title={h.cliente_nome}>{h.cliente_nome}</td>
+                  <td className="max-w-[18rem]" title={h.cliente_nome}><span className="flex items-center gap-2.5"><Avatar nome={h.cliente_nome} />
+                    <span className="min-w-0"><span className="block truncate font-medium text-slate-800">{h.cliente_nome}</span><span className="num block text-[11px] text-slate-400">{doc(h.cliente_cnpj)}</span></span></span></td>
                   <td className="num">{comp(h.competencia)}</td>
                   <td className="num">{data(h.vencimento)}</td>
                   <td className="num text-right">{moeda(h.valor_original)}</td>
@@ -85,13 +95,13 @@ export default function Honorarios() {
                   <td className="num text-right">{h.valor_pago_acumulado ? moeda(h.valor_pago_acumulado) : '—'}</td>
                   <td className="num text-right font-medium">{h.saldo ? moeda(h.saldo) : '—'}</td>
                   <td><Selo texto={h.situacao} /></td>
-                  <td className="space-x-3 pr-5 text-right">
-                    {h.saldo > 0 && <Link className="text-sm text-marca-700 hover:underline" to={`/recebimentos?cliente=${h.cliente_id}`}>Receber</Link>}
-                    <Botao variante="link" onClick={() => setEdit(h)}>Editar</Botao>
-                  </td>
+                  <td className="pr-4 text-right"><span className="inline-flex items-center gap-1.5">
+                    {h.saldo > 0 && <Link className="rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100" to={`/recebimentos?cliente=${h.cliente_id}`}>Receber</Link>}
+                    <button onClick={() => setEdit(h)} title="Editar" aria-label="Editar" className="rounded-md p-1.5 text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 hover:text-blue-700"><Icone nome="editar" className="h-3.5 w-3.5" /></button>
+                  </span></td>
                 </tr>))}
               </tbody>
-              <tfoot><tr className="font-medium"><td colSpan={3} className="px-3 py-2">{lista.length} honorários</td><td colSpan={2} className="num px-3 text-right">{moeda(tot.valor)}</td>
+              <tfoot><tr className="font-semibold text-slate-800"><td colSpan={3} className="px-3 py-2">{lista.length} honorários</td><td colSpan={2} className="num px-3 text-right">{moeda(tot.valor)}</td>
                 <td className="num px-3 text-right">{moeda(tot.pago)}</td><td className="num px-3 text-right">{moeda(tot.saldo)}</td><td colSpan={2} /></tr></tfoot>
             </table>
           </div>}
