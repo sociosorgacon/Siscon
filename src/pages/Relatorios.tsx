@@ -269,7 +269,7 @@ function CartaoCliente({ g, whats, extrato }: { g: Grupo; whats: string | null; 
             <thead><tr><th>Competência</th><th className="text-right">Valor</th><th className="text-right">Valor pago</th><th className="text-right">Saldo devedor</th><th className="text-center">Vencimento</th><th className="text-center">Status</th></tr></thead>
             <tbody>{g.hon.map(h => <tr key={h.id}>
               <td className="num">{comp(h.competencia)}</td>
-              <td className="num text-right">{moeda(h.valor_original)}{h.juros_calc > 0 && <span className="ml-1.5 text-[11px] text-red-500" title="juros do Siscon">+{moeda(h.juros_calc)}</span>}</td>
+              <td className="num text-right" title={h.juros_calc > 0 ? `Inclui ${moeda(h.juros_calc)} de juros` : undefined}>{moeda(h.valor_original + h.juros_calc)}</td>
               <td className="num text-right text-emerald-700">{h.valor_pago_acumulado ? moeda(h.valor_pago_acumulado) : '—'}</td>
               <td className="num text-right font-semibold">{moeda(h.saldo)}</td>
               <td className="num text-center">{data(h.vencimento)}</td>

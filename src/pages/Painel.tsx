@@ -4,8 +4,8 @@ import { supabase, todos, type Honorario, type Recibo, type Despesa } from '../l
 import { useApp, useDados, escritorioDe } from '../lib/app'
 import { chamarAsaas } from '../lib/asaas'
 import { moeda, data, ultimasCompetencias, compParaIso } from '../lib/format'
-import { Cartao, Carregando, Indicador, Vazio, useAviso } from '../components/ui'
-import { Icone } from '../components/icones'
+import { Avatar, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
+import { Icone, type NomeIcone } from '../components/icones'
 import { baixarBackup } from '../lib/backup'
 import { imprimirRecibo } from '../lib/recibo-pdf'
 import DetalheIndicador, { type Indicador as QualIndicador } from './PainelDetalhe'
@@ -79,7 +79,16 @@ export default function Painel() {
           <h1 className="text-xl font-semibold tracking-tight">Painel de Controle</h1>
           <p className="mt-0.5 text-sm text-white/75 first-letter:uppercase">{hoje}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <label className="inline-flex items-center gap-2 rounded-lg bg-white/10 py-1 pl-3 pr-1 text-xs text-white/80 ring-1 ring-white/20">
+            <Icone nome="calendario" className="h-3.5 w-3.5" />Competência
+            <select className="rounded-md bg-white px-2 py-1 text-sm font-semibold text-slate-900 outline-none" value={c} onChange={e => setCompSel(e.target.value)}>
+              <option value={config.competencia_atual}>{config.competencia_atual} (atual)</option>
+              {comps.filter(x => x !== config.competencia_atual).map(m => <option key={m} value={m}>{m}</option>)}
+            </select></label>
+          <button onClick={alternarOculto} title={oculto ? 'Mostrar os valores' : 'Ocultar os valores'}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium ring-1 ring-white/25 hover:bg-white/20">
+            <Icone nome={oculto ? 'olho' : 'olhoFechado'} className="h-3.5 w-3.5" />{oculto ? 'Mostrar valores' : 'Ocultar valores'}</button>
           {asaas.dados && <Link to="/asaas" className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/80 ring-1 ring-white/20 hover:bg-white/15">
             Saldo Asaas <b className="ml-1 text-sm font-semibold text-white">{moeda(asaas.dados.saldo)}</b></Link>}
           <button onClick={backup} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium ring-1 ring-white/25 hover:bg-white/20">
@@ -88,31 +97,16 @@ export default function Painel() {
         </div>
       </section>
 
-      <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-marca-100 bg-white px-5 py-3 shadow-sm">
-        <Icone nome="calendario" className="h-4 w-4 text-marca-700" />
-        <span className="text-sm font-medium text-slate-700">Competência:</span>
-        <select className="campo !h-9 w-56" value={c} onChange={e => setCompSel(e.target.value)}>
-          <option value={config.competencia_atual}>{config.competencia_atual} (atual)</option>
-          {comps.filter(x => x !== config.competencia_atual).map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <button onClick={alternarOculto} title={oculto ? 'Mostrar os valores' : 'Ocultar os valores'}
-          className="ml-auto inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-          <Icone nome={oculto ? 'olho' : 'olhoFechado'} className="h-4 w-4" />{oculto ? 'Mostrar valores' : 'Ocultar valores'}</button>
-      </div>
 
       {!r ? <Carregando /> : <>
-        {!!pendAsaas.dados && <Link to="/asaas" className="mb-4 block rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100">
-          {pendAsaas.dados} pagamento(s) do Asaas aguardando conferência para a baixa automática. Clique para ver.</Link>}
+        {!!pendAsaas.dados && <Link to="/asaas" className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 hover:bg-amber-100">
+          <Icone nome="alerta" className="h-4 w-4 shrink-0" /><span><b>{pendAsaas.dados} pagamento(s) do Asaas</b> aguardando conferência para a baixa automática.</span><span className="ml-auto font-medium">Ver →</span></Link>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Cartões clicáveis: abrem o relatório do indicador, totalizado por tipo */}
-          <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('receber')} title="Ver detalhes">
-            <Indicador icone="calendario" rotulo="A receber no mês" valor={v(r.aReceber)} detalhe={`Saldo da competência ${c} (honorários + despesas) · clique para detalhar`} /></button>
-          <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('recebido')} title="Ver detalhes">
-            <Indicador icone="ok" rotulo="Recebido no mês" valor={v(r.recebido)} tom="ok" detalhe={`Baixas em ${mR}/${aR}, com e sem recibo · clique para detalhar`} /></button>
-          <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('atraso')} title="Ver detalhes">
-            <Indicador icone="alerta" rotulo="Total em atraso" valor={v(r.atraso)} tom="perigo" detalhe={`Competências anteriores a ${c} · clique para detalhar`} /></button>
-          <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('inadimplentes')} title="Ver detalhes">
-            <Indicador icone="clientes" rotulo="Clientes inadimplentes" valor={r.ranking.length} tom="alerta" detalhe="Com honorário em aberto de competência anterior · clique para detalhar" /></button>
+          <Kpi icone="calendario" cor="azul" rotulo="A receber no mês" valor={v(r.aReceber)} detalhe={`Saldo da competência ${c}`} abrir={() => setDet('receber')} />
+          <Kpi icone="ok" cor="verde" rotulo="Recebido no mês" valor={v(r.recebido)} detalhe={`Baixas em ${mR}/${aR}`} abrir={() => setDet('recebido')} />
+          <Kpi icone="alerta" cor="vermelho" rotulo="Total em atraso" valor={v(r.atraso)} detalhe={`Competências anteriores a ${c}`} abrir={() => setDet('atraso')} />
+          <Kpi icone="clientes" cor="laranja" rotulo="Clientes inadimplentes" valor={r.ranking.length} detalhe="Com honorário de competência anterior" abrir={() => setDet('inadimplentes')} />
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -121,8 +115,9 @@ export default function Painel() {
             {r.ultimos.length === 0 ? <Vazio texto="Nenhum recebimento." /> :
               <ul className="divide-y divide-slate-100">
                 {r.ultimos.slice(0, 6).map(x => (
-                  <li key={x.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
-                    <span className="min-w-0">
+                  <li key={x.id} className="flex items-center gap-3 px-5 py-2.5 text-sm hover:bg-slate-50/70">
+                    <Avatar nome={x.cliente_nome} />
+                    <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium text-slate-700">{x.cliente_nome}</span>
                       <span className="text-xs text-slate-400">{data(x.data_pagamento)} · {x.numero
                         ? <>#{String(x.numero).padStart(5, '0')} · <button className="text-marca-700 hover:underline" onClick={() => imprimirRecibo(x.id, escritorioDe(config))}>Ver recibo</button></>
@@ -140,8 +135,11 @@ export default function Painel() {
             {r.ranking.length === 0 ? <Vazio texto="Nenhum cliente em atraso." /> :
               <ol className="grid divide-slate-100 sm:grid-cols-2 [&>li]:border-b [&>li]:border-slate-100">
                 {r.ranking.slice(0, 10).map((x, i) => (
-                  <li key={x.nome} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
-                    <span className="flex min-w-0 items-center gap-3"><span className="w-6 shrink-0 text-xs text-slate-400">{i + 1}º</span><span className="truncate font-medium text-slate-700">{x.nome}</span></span>
+                  <li key={x.nome} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${i < 3 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
+                    <Avatar nome={x.nome} />
+                    <span className="min-w-0 flex-1"><span className="block truncate font-medium text-slate-700">{x.nome}</span>
+                      <span className="mt-1 block h-1 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-red-400" style={{ width: `${(x.total / r.ranking[0].total) * 100}%` }} /></span></span>
                     <span className="num shrink-0 font-semibold text-red-600">{moeda(x.total)}</span>
                   </li>))}
               </ol>}
@@ -229,5 +227,30 @@ function Grafico({ linhas, sel, escolher }: { linhas: { mes: string; recebido: n
         </div>
       </div>
     </div>
+  )
+}
+
+/** Cartão de indicador do Painel: clicável, com ícone colorido e "Ver detalhes" ao passar o mouse */
+const CORES_KPI = {
+  azul: { barra: 'bg-blue-600', icone: 'bg-blue-50 text-blue-600', valor: 'text-slate-900' },
+  verde: { barra: 'bg-emerald-500', icone: 'bg-emerald-50 text-emerald-600', valor: 'text-emerald-700' },
+  vermelho: { barra: 'bg-red-500', icone: 'bg-red-50 text-red-600', valor: 'text-red-700' },
+  laranja: { barra: 'bg-amber-500', icone: 'bg-amber-50 text-amber-600', valor: 'text-amber-700' },
+}
+function Kpi({ icone, cor, rotulo, valor, detalhe, abrir }: { icone: NomeIcone; cor: keyof typeof CORES_KPI; rotulo: string; valor: React.ReactNode; detalhe: string; abrir: () => void }) {
+  const k = CORES_KPI[cor]
+  return (
+    <button onClick={abrir} className="group relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,24,40,.04)] transition hover:-translate-y-0.5 hover:shadow-md">
+      <span className={`absolute inset-x-0 top-0 h-1 ${k.barra}`} />
+      <span className="flex items-start justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{rotulo}</span>
+        <span className={`rounded-lg p-2 ${k.icone}`}><Icone nome={icone} className="h-4 w-4" /></span>
+      </span>
+      <span className={`num mt-1 block text-[26px] font-semibold leading-tight tracking-tight ${k.valor}`}>{valor}</span>
+      <span className="mt-auto flex items-center justify-between gap-2 pt-2 text-xs text-slate-500">
+        <span>{detalhe}</span>
+        <span className="font-medium text-blue-600 opacity-0 transition group-hover:opacity-100">Ver detalhes →</span>
+      </span>
+    </button>
   )
 }
