@@ -108,7 +108,7 @@ export default function Painel() {
             <Indicador icone="clientes" rotulo="Clientes inadimplentes" valor={r.ranking.length} tom="alerta" detalhe="Com honorário em aberto de competência anterior · clique para detalhar" /></button>
         </div>
 
-        <Cartao titulo="Recebimentos x Pendências (últimos 6 meses)" className="mt-6"><Grafico linhas={r.grafico} /></Cartao>
+        <Cartao titulo="Recebimento dos honorários por competência (últimos 6 meses)" className="mt-6"><Grafico linhas={r.grafico} sel={c} escolher={m => setCompSel(m === config.competencia_atual ? '' : m)} /></Cartao>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <Cartao titulo="Inadimplência" acoes={<Link to="/relatorios" className="text-sm text-marca-700 hover:underline">Ver todas</Link>}>
@@ -145,33 +145,87 @@ export default function Painel() {
 }
 
 /** Barras lado a lado por mês: recebido (azul) e pendente (amarelo), como no Base44 */
-function Grafico({ linhas }: { linhas: { mes: string; recebido: number; pendente: number }[] }) {
-  const maior = Math.max(1, ...linhas.flatMap(l => [l.recebido, l.pendente]))
-  const passo = [1000, 2000, 5000, 10000, 20000, 25000, 50000, 100000].find(p => maior / p <= 5) || Math.ceil(maior / 5)
+/** Recebimento dos honorários por competência: barra empilhada (recebido embaixo, em aberto em cima) = total faturado.
+ *  Mostra quanto de cada mês já entrou e quanto falta; a % recebida fica numa linha de tabela abaixo dos meses. */
+function Grafico({ linhas, sel, escolher }: { linhas: { mes: string; recebido: number; pendente: number }[]; sel: string; escolher: (m: string) => void }) {
+  const [foco, setFoco] = useState<string | null>(null)
+  const totais = linhas.map(l => l.recebido + l.pendente)
+  const maior = Math.max(1, ...totais)
+  const passo = [5000, 10000, 20000, 25000, 50000, 100000].find(p => maior / p <= 4) || Math.ceil(maior / 4)
   const topo = Math.ceil(maior / passo) * passo
   const marcas = Array.from({ length: topo / passo + 1 }, (_, i) => i * passo).reverse()
-  const k = (v: number) => `R$${v >= 1000 ? `${Math.round(v / 1000)}k` : v}`
+  const k = (v: number) => (v >= 1000 ? `R$ ${Math.round(v / 1000)} mil` : `R$ ${v}`)
+  const pct = (l: { recebido: number; pendente: number }) => { const t = l.recebido + l.pendente; return t ? Math.round((l.recebido / t) * 100) : 0 }
+  const atual = linhas.find(l => l.mes === sel) || linhas[linhas.length - 1]
+  const media = linhas.length ? Math.round(linhas.reduce((s, l) => s + pct(l), 0) / linhas.length) : 0
+  const ALT = 220 // px da área de plotagem
+
   return (
     <div className="p-5">
-      <div className="flex gap-2">
-        <div className="flex h-60 flex-col justify-between pb-6 text-right text-[11px] text-slate-400">{marcas.map(m => <span key={m} className="leading-none">{k(m)}</span>)}</div>
-        <div className="relative flex-1">
-          <div className="absolute inset-x-0 top-0 bottom-6 flex flex-col justify-between">{marcas.map(m => <div key={m} className="border-t border-dashed border-slate-200" />)}</div>
-          <div className="relative flex h-60 items-end gap-4 pb-6">
-            {linhas.map(l => (
-              <div key={l.mes} className="relative flex h-full flex-1 flex-col justify-end" title={`${l.mes}\nRecebido: ${moeda(l.recebido)}\nPendente: ${moeda(l.pendente)}`}>
-                <div className="flex h-full items-end justify-center gap-1.5">
-                  <div className="w-full max-w-16 rounded-t bg-blue-600" style={{ height: `${(l.recebido / topo) * 100}%` }} />
-                  <div className="w-full max-w-16 rounded-t bg-red-400" style={{ height: `${(l.pendente / topo) * 100}%` }} />
-                </div>
-                <span className="absolute inset-x-0 -bottom-6 text-center text-xs text-slate-500">{l.mes}</span>
-              </div>))}
+      {/* Destaques: o número que importa antes do gráfico */}
+      {atual && <div className="mb-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg bg-slate-50 px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Recebido da competência {atual.mes}</p>
+          <p className="mt-1 flex items-baseline gap-2"><span className="num text-2xl font-bold text-slate-900">{pct(atual)}%</span>
+            <span className={`text-xs font-medium ${pct(atual) >= media ? 'text-emerald-700' : 'text-red-700'}`}>{pct(atual) >= media ? '▲' : '▼'} média de 6 meses: {media}%</span></p>
+        </div>
+        <div className="rounded-lg bg-slate-50 px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Recebido</p>
+          <p className="num mt-1 text-2xl font-bold text-slate-900">{moeda(atual.recebido)}</p></div>
+        <div className="rounded-lg bg-slate-50 px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Ainda em aberto</p>
+          <p className="num mt-1 text-2xl font-bold text-slate-900">{moeda(atual.pendente)}</p></div>
+      </div>}
+
+      <div className="mb-3 flex items-center gap-4 text-xs text-slate-600">
+        <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-[#2563eb]" />Recebido</span>
+        <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-[#ef4444]" />Em aberto</span>
+        <span className="ml-auto text-slate-400">Clique numa barra para ver a competência</span>
+      </div>
+
+      <div className="flex gap-3">
+        <div className="relative w-14 shrink-0 text-right text-[11px] text-slate-400" style={{ height: ALT }}>
+          {marcas.map((m, i) => <span key={m} className="absolute right-0 -translate-y-1/2" style={{ top: `${(i / (marcas.length - 1)) * 100}%` }}>{k(m)}</span>)}
+        </div>
+        <div className="relative flex-1" style={{ height: ALT }}>
+          {marcas.map((m, i) => <div key={m} className={`absolute inset-x-0 border-t ${m === 0 ? 'border-slate-300' : 'border-slate-100'}`} style={{ top: `${(i / (marcas.length - 1)) * 100}%` }} />)}
+          <div className="absolute inset-0 flex items-end justify-around">
+            {linhas.map(l => {
+              const hRec = (l.recebido / topo) * ALT, hPen = (l.pendente / topo) * ALT, ativo = l.mes === sel
+              return (
+                <button key={l.mes} onClick={() => escolher(l.mes)} onMouseEnter={() => setFoco(l.mes)} onMouseLeave={() => setFoco(null)}
+                  onFocus={() => setFoco(l.mes)} onBlur={() => setFoco(null)}
+                  aria-label={`${l.mes}: recebido ${moeda(l.recebido)}, em aberto ${moeda(l.pendente)}, ${pct(l)}% recebido`}
+                  className={`group relative flex h-full flex-1 flex-col items-center justify-end rounded-md transition ${ativo ? 'bg-blue-50/70' : 'hover:bg-slate-50'}`}>
+                  {/* rótulo direto só no topo da barra selecionada */}
+                  {ativo && <span className="num mb-1 text-[11px] font-semibold text-slate-700">{moeda(l.recebido + l.pendente)}</span>}
+                  <span className="flex w-6 flex-col justify-end" style={{ height: hRec + hPen + (l.pendente && l.recebido ? 2 : 0) }}>
+                    {l.pendente > 0 && <span className="block w-full rounded-t-[4px] bg-[#ef4444]" style={{ height: Math.max(hPen, 2) }} />}
+                    {l.pendente > 0 && l.recebido > 0 && <span className="block h-[2px] w-full bg-white" />}
+                    {l.recebido > 0 && <span className={`block w-full bg-[#2563eb] ${l.pendente ? '' : 'rounded-t-[4px]'}`} style={{ height: Math.max(hRec, 2) }} />}
+                  </span>
+                  {foco === l.mes && (
+                    <span className="pointer-events-none absolute bottom-full z-10 mb-2 w-52 rounded-lg bg-slate-900 px-3 py-2 text-left text-xs text-white shadow-lg">
+                      <b className="mb-1 block text-sm">Competência {l.mes}</b>
+                      <span className="flex justify-between"><span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-sm bg-[#2563eb]" />Recebido</span><span className="num">{moeda(l.recebido)}</span></span>
+                      <span className="flex justify-between"><span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-sm bg-[#ef4444]" />Em aberto</span><span className="num">{moeda(l.pendente)}</span></span>
+                      <span className="mt-1 flex justify-between border-t border-white/15 pt-1"><span>Faturado</span><span className="num">{moeda(l.recebido + l.pendente)}</span></span>
+                      <span className="flex justify-between text-white/70"><span>% recebido</span><span className="num">{pct(l)}%</span></span>
+                    </span>)}
+                </button>)
+            })}
           </div>
         </div>
       </div>
-      <div className="mt-3 flex gap-4 text-xs text-slate-500">
-        <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-blue-600" />Recebido</span>
-        <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-red-400" />Pendente</span>
+      {/* eixo dos meses + linha de tabela com a % recebida (identidade nunca só pela cor) */}
+      <div className="mt-2 flex gap-3">
+        <div className="w-14 shrink-0 text-right text-[11px] leading-5 text-slate-400"><span className="block">&nbsp;</span>recebido</div>
+        <div className="flex flex-1 justify-around">
+          {linhas.map(l => <div key={l.mes} className="flex-1 text-center leading-5">
+            <span className={`block text-xs ${l.mes === sel ? 'font-semibold text-slate-900' : 'text-slate-500'}`}>{l.mes}</span>
+            <span className={`num text-[11px] font-medium ${pct(l) >= 90 ? 'text-slate-600' : 'text-red-700'}`}>{pct(l)}%</span>
+          </div>)}
+        </div>
       </div>
     </div>
   )
