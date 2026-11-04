@@ -38,7 +38,6 @@ export default function Recebimentos() {
   const [valorRecebido, setValorRecebido] = useState('')
   // Recibo único: outros clientes além do principal (escolhidos na hora)
   const [extras, setExtras] = useState<string[]>([])
-  const [adicionando, setAdicionando] = useState(false)
 
   const { dados: clientes } = useDados(() => todos<Cliente>((a, b) => supabase.from('clientes').select('*').order('razao_social').range(a, b)))
   const cliente = clientes?.find(c => c.id === clienteId)
@@ -60,13 +59,24 @@ export default function Recebimentos() {
 
   useEffect(() => { setSel({}); setAvulsos([]) }, [ids.join()])
 
-  const sugestoes = useMemo(() => !busca || (cliente && !adicionando) ? [] :
-    (clientes || []).filter(c => !ids.includes(c.id) && normaliza(`${c.razao_social} ${c.cnpj}`).includes(normaliza(busca))).slice(0, 8),
-    [busca, clientes, cliente, adicionando, ids.join()]) // eslint-disable-line react-hooks/exhaustive-deps
-  function escolher(id: string) {
-    if (cliente && adicionando) setExtras(x => [...x, id]); else { setParams({ cliente: id }); setExtras([]) }
-    setAdicionando(false)
-    setBusca('')
+  const [soDevedores, setSoDevedores] = useState(false)
+  // Saldo em aberto por cliente (honorários + despesas), para mostrar na lista
+  const { dados: emAberto } = useDados(async () => {
+    const [h, d] = await Promise.all([
+      todos<{ cliente_id: string; saldo: number }>((a, b) => supabase.from('v_honorarios').select('cliente_id, saldo').gt('saldo', 0).range(a, b)),
+      todos<{ cliente_id: string; saldo: number }>((a, b) => supabase.from('v_despesas').select('cliente_id, saldo').gt('saldo', 0).range(a, b)),
+    ])
+    const m = new Map<string, number>()
+    for (const x of [...h, ...d]) m.set(x.cliente_id, (m.get(x.cliente_id) || 0) + x.saldo)
+    return m
+  }, [ultimo?.id])
+  const listaClientes = useMemo(() => (clientes || []).filter(c =>
+    (c.status === 'Ativo' || (emAberto?.get(c.id) || 0) > 0 || ids.includes(c.id)) &&
+    (!soDevedores || (emAberto?.get(c.id) || 0) > 0 || ids.includes(c.id)) &&
+    (!busca || normaliza(`${c.razao_social} ${c.nome_fantasia || ''} ${c.cnpj}`).includes(normaliza(busca)))), [clientes, emAberto, soDevedores, busca, ids.join()]) // eslint-disable-line react-hooks/exhaustive-deps
+  function alternarCliente(id: string) {
+    if (ids.includes(id)) return removerCliente(id)
+    if (!clienteId) { setParams({ cliente: id }); setExtras([]) } else setExtras(x => [...x, id])
   }
   function removerCliente(id: string) {
     if (id !== clienteId) return setExtras(x => x.filter(y => y !== id))
@@ -165,30 +175,32 @@ export default function Recebimentos() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
           {modo === 'cliente' ? (
-            <Cartao titulo={varios ? `Clientes (recibo único · ${ids.length})` : 'Cliente'}>
-              <div className="relative p-4">
-                {cliente ? (<div className="space-y-2">
-                  {selecionados.map(c => (
-                    <div key={c.id} className="flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3"><Avatar nome={c.razao_social} /><div className="min-w-0"><p className="truncate font-medium text-slate-800">{c.razao_social}</p><p className="num text-xs text-slate-500">{doc(c.cnpj)}</p></div></div>
-                      {varios ? <Botao variante="link" onClick={() => removerCliente(c.id)}>Remover</Botao>
-                        : <Botao variante="secundario" onClick={() => { setParams({}); setExtras([]); setBusca('') }}>Trocar</Botao>}
-                    </div>))}
-                  {adicionando
-                    ? <div className="flex gap-2 pt-1"><Busca valor={busca} mudar={setBusca} placeholder="Nome ou CNPJ do outro cliente" className="flex-1" />
-                        <Botao variante="secundario" onClick={() => { setAdicionando(false); setBusca('') }}>Cancelar</Botao></div>
-                    : <Botao variante="link" onClick={() => setAdicionando(true)}>+ Adicionar outro cliente (recibo único)</Botao>}
-                  {adicionando && sugestoes.length > 0 && <ul className="mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
-                    {sugestoes.map(c => <li key={c.id}><button className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-blue-50/60" onClick={() => escolher(c.id)}>
-                      <Avatar nome={c.razao_social} /><span className="min-w-0"><span className="block truncate font-medium text-slate-800">{c.razao_social}</span><span className="num text-xs text-slate-400">{doc(c.cnpj)}</span></span></button></li>)}
-                  </ul>}
-                </div>) : <>
-                  <Busca valor={busca} mudar={setBusca} placeholder="Digite o nome ou CNPJ do cliente" className="" />
-                  {sugestoes.length > 0 && <ul className="mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
-                    {sugestoes.map(c => <li key={c.id}><button className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-blue-50/60" onClick={() => escolher(c.id)}>
-                      <Avatar nome={c.razao_social} /><span className="min-w-0"><span className="block truncate font-medium text-slate-800">{c.razao_social}</span><span className="num text-xs text-slate-400">{doc(c.cnpj)}</span></span></button></li>)}
-                  </ul>}
-                </>}
+            <Cartao titulo={ids.length ? `Clientes selecionados · ${ids.length}${varios ? ' (recibo em conjunto)' : ''}` : 'Selecione o(s) cliente(s)'}
+              acoes={ids.length ? <button className="text-sm text-slate-500 hover:text-red-600" onClick={() => { setParams({}); setExtras([]) }}>Limpar seleção</button> : null}>
+              <div className="p-4">
+                {/* Selecionados, como etiquetas */}
+                {selecionados.length > 0 && <div className="mb-3 flex flex-wrap gap-2">
+                  {selecionados.map(c => <span key={c.id} className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 py-1 pl-1 pr-2 text-xs font-medium text-blue-900 ring-1 ring-inset ring-blue-200">
+                    <Avatar nome={c.razao_social} /><span className="max-w-[14rem] truncate">{c.razao_social}</span>
+                    <button onClick={() => removerCliente(c.id)} title="Tirar da seleção" className="rounded-full p-0.5 text-blue-700 hover:bg-blue-100"><Icone nome="fechar" className="h-3.5 w-3.5" /></button></span>)}
+                </div>}
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <Busca valor={busca} mudar={setBusca} placeholder="Filtrar por nome ou CNPJ" className="flex-1" />
+                  <label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={soDevedores} onChange={e => setSoDevedores(e.target.checked)} />Só com débito em aberto</label>
+                </div>
+                <ul className="max-h-72 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+                  {listaClientes.length === 0 && <li className="px-3 py-3 text-sm text-slate-400">Nenhum cliente encontrado.</li>}
+                  {listaClientes.map(c => {
+                    const marcado = ids.includes(c.id), deve = emAberto?.get(c.id) || 0
+                    return <li key={c.id}><label className={`flex cursor-pointer items-center gap-3 px-3 py-2 text-sm ${marcado ? 'bg-blue-50/70' : 'hover:bg-slate-50'}`}>
+                      <input type="checkbox" checked={marcado} onChange={() => alternarCliente(c.id)} />
+                      <Avatar nome={c.razao_social} />
+                      <span className="min-w-0 flex-1"><span className="block truncate font-medium text-slate-800">{c.razao_social}</span><span className="num text-[11px] text-slate-400">{doc(c.cnpj)}{c.status === 'Inativo' ? ' · inativo' : ''}</span></span>
+                      <span className={`num shrink-0 text-xs font-semibold ${deve > 0 ? 'text-red-600' : 'text-slate-300'}`}>{deve > 0 ? moeda(deve) : 'sem débito'}</span>
+                    </label></li>
+                  })}
+                </ul>
+                <p className="mt-2 text-xs text-slate-500">Marque um cliente para receber dele, ou vários para fazer <b>um recibo só em conjunto</b>.</p>
               </div>
             </Cartao>
           ) : (
@@ -205,21 +217,21 @@ export default function Recebimentos() {
               {!abertos ? <Carregando /> : abertos.length === 0 ? <Vazio texto={varios ? 'Estes clientes não têm nada em aberto.' : 'Este cliente não tem nada em aberto.'} /> :
                 <div className="overflow-x-auto">
                   <table className="tabela">
-                    <thead><tr><th />{varios && <th>Cliente</th>}<th>Item</th><th>Comp.</th><th className="text-right">Saldo</th><th className="text-right">Receber (R$)</th><th className="w-28">{integral ? 'Desconto (integral)' : 'Desconto'}</th></tr></thead>
+                    <thead><tr><th />{varios && <th>Cliente</th>}<th>Item</th><th>Comp.</th><th className="text-right">Saldo</th><th className="text-right">Receber (R$)</th><th className="w-24">{integral ? 'Desconto (integral)' : 'Desconto'}</th></tr></thead>
                     <tbody>{abertos.map(l => {
                       const s = sel[l.id]
                       return (
                         <tr key={l.id} className={s?.marcado ? 'bg-marca-50' : ''}>
                           <td><input type="checkbox" checked={!!s?.marcado} onChange={e => marcar(l, e.target.checked)} /></td>
-                          {varios && <td className="max-w-[12rem] truncate" title={l.cliente}>{l.cliente}</td>}
-                          <td className="max-w-[16rem]" title={l.descricao}>
+                          {varios && <td className="max-w-[8rem] truncate text-xs font-medium text-slate-700" title={l.cliente}>{l.cliente}</td>}
+                          <td className={varios ? "max-w-[11rem]" : "max-w-[16rem]"} title={l.descricao}>
                             <span className="flex items-center gap-1.5"><span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${l.tipo === 'despesa' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>{l.tipo === 'despesa' ? 'Extra' : 'Hon.'}</span>
                               <span className="truncate text-slate-800">{l.descricao.split(' (inclui')[0]}</span></span>
                             {l.descricao.includes('(inclui') && <span className="mt-0.5 block text-[11px] text-red-600">{l.descricao.slice(l.descricao.indexOf('(inclui') + 1, -1)}</span>}</td>
                           <td className="num" title={`${l.situacao} · vencimento ${data(l.venc)}`}><span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${l.situacao === 'Atrasado' ? 'bg-red-500' : l.situacao === 'Pago Parcial' ? 'bg-amber-500' : 'bg-sky-500'}`} />{comp(l.comp)}</td>
                           <td className="num text-right">{moeda(l.saldo)}</td>
-                          <td><input className="campo num !h-8 w-24 !px-2 text-right" disabled={!s?.marcado} value={s?.valor ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], valor: e.target.value } }))} /></td>
-                          <td><input className="campo num !h-8 w-24 !px-2 text-right" disabled={!s?.marcado || integral} placeholder="0,00" value={integral && s?.marcado ? fmt(Math.max(0, l.saldo - num(s.valor))) : s?.desconto ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], desconto: e.target.value } }))} /></td>
+                          <td><input className="campo num !h-8 w-[5.5rem] !px-2 text-right" disabled={!s?.marcado} value={s?.valor ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], valor: e.target.value } }))} /></td>
+                          <td><input className="campo num !h-8 w-[5.5rem] !px-2 text-right" disabled={!s?.marcado || integral} placeholder="0,00" value={integral && s?.marcado ? fmt(Math.max(0, l.saldo - num(s.valor))) : s?.desconto ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], desconto: e.target.value } }))} /></td>
                         </tr>)
                     })}</tbody>
                   </table>
