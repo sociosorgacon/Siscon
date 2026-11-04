@@ -4,7 +4,8 @@ import { supabase, ok, todos, type Cliente, type Honorario, type Despesa, type R
 import { useApp, useDados, escritorioDe } from '../lib/app'
 import { moeda, data, comp, hojeIso, normaliza, doc } from '../lib/format'
 import { imprimirRecibo } from '../lib/recibo-pdf'
-import { Botao, Cabecalho, Campo, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
+import { Avatar, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
+import { Icone } from '../components/icones'
 
 type Linha = { tipo: 'honorario' | 'despesa'; id: string; cid: string; cliente: string; descricao: string; comp: string; venc: string; saldo: number; situacao: string }
 type Sel = { marcado: boolean; valor: string; desconto: string }
@@ -140,20 +141,20 @@ export default function Recebimentos() {
 
   return (
     <>
-      <Cabecalho titulo="Registrar recebimento" subtitulo="Baixa com recibo (numerado) ou sem recibo (ex.: boleto pago)"
-        acoes={<div className="flex rounded-md border border-slate-300 bg-white p-0.5 text-sm">
+      <Cabecalho icone="receber" titulo="Registrar recebimento" subtitulo="Baixa com recibo (numerado) ou sem recibo (ex.: boleto pago)"
+        acoes={<div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
           {(['cliente', 'avulso'] as const).map(m => <button key={m} onClick={() => trocarModo(m)}
-            className={`rounded px-3 py-1.5 ${modo === m ? 'bg-marca-700 text-white' : 'text-slate-600'}`}>{m === 'cliente' ? 'Cliente cadastrado' : 'Recibo avulso'}</button>)}
+            className={`rounded-md px-3.5 py-1.5 font-medium transition ${modo === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{m === 'cliente' ? 'Cliente cadastrado' : 'Recibo avulso'}</button>)}
         </div>} />
 
       {ultimo && !ultimo.numero && (
-        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Baixa sem recibo registrada para {ultimo.cliente_nome} — {moeda(ultimo.valor)}. Para desfazer, use Baixas e Recibos.
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <Icone nome="ok" className="h-5 w-5 shrink-0 text-emerald-600" />Baixa sem recibo registrada para {ultimo.cliente_nome} — {moeda(ultimo.valor)}. Para desfazer, use Baixas e Recibos.
         </div>
       )}
       {ultimo?.numero && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <span>Recibo <b>nº {ultimo.numero}</b> emitido para {ultimo.cliente_nome} — {moeda(ultimo.valor)}.</span>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <span className="flex items-center gap-2"><Icone nome="ok" className="h-5 w-5 shrink-0 text-emerald-600" /><span>Recibo <b>nº {ultimo.numero}</b> emitido para {ultimo.cliente_nome} — {moeda(ultimo.valor)}.</span></span>
           <span className="flex gap-2">
             <Botao variante="secundario" onClick={() => imprimirRecibo(ultimo.id, escritorioDe(config))}>Abrir PDF</Botao>
             <Botao variante="secundario" onClick={() => imprimirRecibo(ultimo.id, escritorioDe(config), false)}>Baixar PDF</Botao>
@@ -169,23 +170,23 @@ export default function Recebimentos() {
                 {cliente ? (<div className="space-y-2">
                   {selecionados.map(c => (
                     <div key={c.id} className="flex items-center justify-between gap-3">
-                      <div><p className="font-medium">{c.razao_social}</p><p className="text-xs text-slate-500">{doc(c.cnpj)}</p></div>
+                      <div className="flex min-w-0 items-center gap-3"><Avatar nome={c.razao_social} /><div className="min-w-0"><p className="truncate font-medium text-slate-800">{c.razao_social}</p><p className="num text-xs text-slate-500">{doc(c.cnpj)}</p></div></div>
                       {varios ? <Botao variante="link" onClick={() => removerCliente(c.id)}>Remover</Botao>
                         : <Botao variante="secundario" onClick={() => { setParams({}); setExtras([]); setBusca('') }}>Trocar</Botao>}
                     </div>))}
                   {adicionando
-                    ? <div className="flex gap-2 pt-1"><input className="campo" autoFocus placeholder="Nome ou CNPJ do outro cliente" value={busca} onChange={e => setBusca(e.target.value)} />
+                    ? <div className="flex gap-2 pt-1"><Busca valor={busca} mudar={setBusca} placeholder="Nome ou CNPJ do outro cliente" className="flex-1" />
                         <Botao variante="secundario" onClick={() => { setAdicionando(false); setBusca('') }}>Cancelar</Botao></div>
                     : <Botao variante="link" onClick={() => setAdicionando(true)}>+ Adicionar outro cliente (recibo único)</Botao>}
                   {adicionando && sugestoes.length > 0 && <ul className="mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
-                    {sugestoes.map(c => <li key={c.id}><button className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => escolher(c.id)}>
-                      {c.razao_social} <span className="text-xs text-slate-400">{doc(c.cnpj)}</span></button></li>)}
+                    {sugestoes.map(c => <li key={c.id}><button className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-blue-50/60" onClick={() => escolher(c.id)}>
+                      <Avatar nome={c.razao_social} /><span className="min-w-0"><span className="block truncate font-medium text-slate-800">{c.razao_social}</span><span className="num text-xs text-slate-400">{doc(c.cnpj)}</span></span></button></li>)}
                   </ul>}
                 </div>) : <>
-                  <input className="campo" autoFocus placeholder="Digite o nome ou CNPJ do cliente" value={busca} onChange={e => setBusca(e.target.value)} />
+                  <Busca valor={busca} mudar={setBusca} placeholder="Digite o nome ou CNPJ do cliente" className="" />
                   {sugestoes.length > 0 && <ul className="mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg">
-                    {sugestoes.map(c => <li key={c.id}><button className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => escolher(c.id)}>
-                      {c.razao_social} <span className="text-xs text-slate-400">{doc(c.cnpj)}</span></button></li>)}
+                    {sugestoes.map(c => <li key={c.id}><button className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-blue-50/60" onClick={() => escolher(c.id)}>
+                      <Avatar nome={c.razao_social} /><span className="min-w-0"><span className="block truncate font-medium text-slate-800">{c.razao_social}</span><span className="num text-xs text-slate-400">{doc(c.cnpj)}</span></span></button></li>)}
                   </ul>}
                 </>}
               </div>
@@ -211,7 +212,10 @@ export default function Recebimentos() {
                         <tr key={l.id} className={s?.marcado ? 'bg-marca-50' : ''}>
                           <td><input type="checkbox" checked={!!s?.marcado} onChange={e => marcar(l, e.target.checked)} /></td>
                           {varios && <td className="max-w-[12rem] truncate" title={l.cliente}>{l.cliente}</td>}
-                          <td className="max-w-[14rem] truncate">{l.tipo === 'despesa' ? <span className="mr-1 text-xs text-slate-400">Extra ·</span> : null}{l.descricao}</td>
+                          <td className="max-w-[16rem]" title={l.descricao}>
+                            <span className="flex items-center gap-1.5"><span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${l.tipo === 'despesa' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>{l.tipo === 'despesa' ? 'Extra' : 'Hon.'}</span>
+                              <span className="truncate text-slate-800">{l.descricao.split(' (inclui')[0]}</span></span>
+                            {l.descricao.includes('(inclui') && <span className="mt-0.5 block text-[11px] text-red-600">{l.descricao.slice(l.descricao.indexOf('(inclui') + 1, -1)}</span>}</td>
                           <td className="num" title={`${l.situacao} · vencimento ${data(l.venc)}`}><span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${l.situacao === 'Atrasado' ? 'bg-red-500' : l.situacao === 'Pago Parcial' ? 'bg-amber-500' : 'bg-sky-500'}`} />{comp(l.comp)}</td>
                           <td className="num text-right">{moeda(l.saldo)}</td>
                           <td><input className="campo num !h-8 w-24 !px-2 text-right" disabled={!s?.marcado} value={s?.valor ?? ''} onChange={e => setSel(x => ({ ...x, [l.id]: { ...x[l.id], valor: e.target.value } }))} /></td>
@@ -253,19 +257,19 @@ export default function Recebimentos() {
               </div>
             )}
             {modo === 'cliente' && (
-              <div className="flex rounded-md border border-slate-300 p-0.5 text-sm">
+              <div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
                 {[true, false].map(v => <button key={String(v)} type="button" onClick={() => setComRecibo(v)}
-                  className={`flex-1 rounded px-3 py-1.5 ${comRecibo === v ? 'bg-marca-700 text-white' : 'text-slate-600'}`}>{v ? 'Com recibo' : 'Sem recibo'}</button>)}
+                  className={`flex-1 rounded-md px-3 py-1.5 font-medium transition ${comRecibo === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{v ? 'Com recibo' : 'Sem recibo'}</button>)}
               </div>
             )}
             <Campo rotulo="Data do pagamento"><input className="campo" type="date" value={dataPg} onChange={e => setDataPg(e.target.value)} /></Campo>
             <Campo rotulo="Forma de pagamento"><select className="campo" value={metodo} onChange={e => setMetodo(e.target.value)}>{METODOS.map(m => <option key={m}>{m}</option>)}</select></Campo>
             <Campo rotulo="Observação (sai no recibo)"><textarea className="campo" rows={2} value={obs} onChange={e => setObs(e.target.value)} /></Campo>
-            <div className="flex items-baseline justify-between border-t border-slate-100 pt-3">
-              <span className="text-sm text-slate-500">{itens.length} item(ns)</span>
-              <span className="num text-2xl font-semibold text-marca-800">{moeda(total)}</span>
+            <div className="rounded-xl bg-gradient-to-r from-[#16244a] to-[#204879] px-4 py-3 text-white">
+              <p className="flex items-center justify-between text-xs text-white/70"><span>Total a registrar</span><span>{itens.length} {itens.length === 1 ? 'item' : 'itens'}</span></p>
+              <p className="num mt-0.5 text-3xl font-bold tracking-tight">{moeda(total)}</p>
             </div>
-            <Botao className="w-full" disabled={salvando || !itens.length} onClick={registrar}>{salvando ? 'Registrando…' : modo === 'avulso' || comRecibo ? 'Registrar e emitir recibo' : 'Registrar baixa sem recibo'}</Botao>
+            <Botao className="w-full !py-2.5" disabled={salvando || !itens.length} onClick={registrar}>{salvando ? 'Registrando…' : modo === 'avulso' || comRecibo ? 'Registrar e emitir recibo' : 'Registrar baixa sem recibo'}</Botao>
           </div>
         </Cartao>
       </div>
