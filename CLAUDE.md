@@ -53,6 +53,8 @@ Cores da logo: azul **#204879** (`marca-700`) e cinza **#73767B** (`cinza`). Log
 3. **Virada final:** reimportar dados atualizados do Base44 no dia em que deixar de usá-lo. **Hoje o usuário usa Base44 e Siscon em paralelo** (decisão dele, 03/11/2026): a numeração de recibos se repete entre os dois (ex.: nº 158 existe nos dois) — usuário pediu para ignorar por enquanto; resolver na virada.
 4. **Domínio próprio** (`siscon.orgaconcontabilidade.com.br`): adiado pelo usuário para quando o sistema estiver pronto.
 
+**Conferência das baixas de 10/2026 com o relatório do Base44 (04/11/2026):** 121 itens; 77 já baixados, 33 baixados por script (valor = saldo), 6 com valor diferente (quitar saldo: Paulo Victor 05/26, Ki-Mercado 07/26, Nilo 12/25; só o pago: A. M. Comercial 06/26, Francelino 09/26, M. A. de Amorim 09/26 — restante em aberto para o usuário conferir), Marcos Fábio 09/26 já tinha o R$ 1,60; honorário 09/2026 que o sistema antigo não gerou criado e baixado para Samela, SBT, Wagner e WB. No Base44, Iury Couto e Leonardo Oliveira têm o mesmo CNPJ (corrigir no cadastro). Scripts com dados de clientes ficaram fora do Git.
+
 **Concluídas (31/10/2026):** despesas fixas (cadastradas pela tela: Sistema NFStock da Aroma Coffee e da El-Shaday); descrições padronizadas; recibo único para vários clientes; lista de clientes cortada na tela Receber.
 
 ## Como trabalhar neste repositório
