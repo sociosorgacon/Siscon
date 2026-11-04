@@ -206,21 +206,21 @@ export default function Relatorios() {
             </aside>
           )}
 
-          <div className="min-w-0 space-y-5">
+          <div className="min-w-0 space-y-3">
             {/* Bloco Pix */}
             {aba !== 'financeiro' && (
-              <div className="mx-auto flex w-fit items-center gap-6 rounded-xl bg-white px-8 py-5 shadow-sm ring-1 ring-slate-100">
-                <img src="/logo.png" alt="Orgacon" className="h-14" />
-                <span className="h-24 w-px bg-slate-300" />
+              <div className="mx-auto flex w-fit items-center gap-5 rounded-xl bg-white px-6 py-3 shadow-sm ring-1 ring-slate-100">
+                <img src="/logo.png" alt="Orgacon" className="h-10" />
+                <span className="h-16 w-px bg-slate-300" />
                 <div className="text-center">
-                  <p className="text-lg font-bold text-[#204879]">PIX</p>
-                  {qr ? <img src={qr} alt="QR Code Pix" className="mx-auto h-28 w-28" /> : <div className="h-28 w-28" />}
-                  <p className="text-xs font-semibold text-[#204879]">CHAVE<br />{doc(pix.chave)}</p>
+                  <p className="text-sm font-bold text-[#204879]">PIX</p>
+                  {qr ? <img src={qr} alt="QR Code Pix" className="mx-auto h-20 w-20" /> : <div className="h-20 w-20" />}
+                  <p className="text-[11px] font-semibold text-[#204879]">Chave {doc(pix.chave)}</p>
                 </div>
               </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-3 shadow-sm print:border-0 print:shadow-none">
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm print:border-0 print:shadow-none">
               <Icone nome="calendario" className="h-4 w-4 text-slate-500" />
               <span className="text-sm font-medium text-slate-700">{aba === 'financeiro' ? 'Competência:' : aba === 'inadimplencia' ? 'Atrasados antes da competência:' : 'Débitos até a competência:'}</span>
               <select className="campo !h-9 w-44" value={c} onChange={e => setCompSel(e.target.value)}>
@@ -231,21 +231,21 @@ export default function Relatorios() {
             </div>
 
             {aba === 'financeiro' ? <Financeiro fin={fin} porComp={porComp} c={c} pRec={pRec} /> : <>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-blue-100 bg-blue-50 px-5 py-4 text-center">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2 text-center">
                   <p className="text-sm font-medium uppercase tracking-wide text-blue-800">Total honorários em aberto</p>
-                  <p className="num mt-1 text-2xl font-bold text-blue-700">{moeda(totHon)}</p></div>
-                <div className="rounded-xl border border-orange-100 bg-orange-50 px-5 py-4 text-center">
+                  <p className="num text-xl font-bold text-blue-700">{moeda(totHon)}</p></div>
+                <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-center">
                   <p className="text-sm font-medium uppercase tracking-wide text-orange-800">Total despesas em aberto</p>
-                  <p className="num mt-1 text-2xl font-bold text-orange-700">{moeda(totDes)}</p></div>
+                  <p className="num text-xl font-bold text-orange-700">{moeda(totDes)}</p></div>
               </div>
 
               {visiveis.length === 0 ? <div className="rounded-xl bg-white shadow-sm"><Vazio texto="Nada em aberto." /></div> :
                 visiveis.map(g => <CartaoCliente key={g.id} g={g} whats={linkWhats(g, config.escritorio_nome, pix)} extrato={() => extrato(g)} />)}
 
-              <div className="flex items-center justify-between rounded-xl bg-[#1b2a4a] px-6 py-4 text-white">
+              <div className="flex items-center justify-between rounded-xl bg-[#1b2a4a] px-5 py-2.5 text-white">
                 <span className="font-semibold uppercase tracking-wide">Total geral em aberto{sel ? ` (${visiveis.length} selecionados)` : ''}</span>
-                <span className="num text-2xl font-bold">{moeda(totHon + totDes)}</span>
+                <span className="num text-xl font-bold">{moeda(totHon + totDes)}</span>
               </div>
             </>}
             <p className="text-center text-xs text-slate-500">Relatório gerado em {agora.toLocaleDateString('pt-BR')} às {agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · {config.escritorio_nome}</p>
@@ -259,17 +259,17 @@ export default function Relatorios() {
 function CartaoCliente({ g, whats, extrato }: { g: Grupo; whats: string | null; extrato: () => void }) {
   return (
     <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-100 break-inside-avoid">
-      <header className="flex flex-wrap items-center justify-between gap-2 bg-[#1b2a4a] px-5 py-3 text-white">
-        <h3 className="font-semibold">{g.cliente}</h3><span className="num text-sm text-blue-200">{g.cnpj ? doc(g.cnpj) : ''}</span>
+      <header className="flex flex-wrap items-center justify-between gap-2 bg-[#1b2a4a] px-4 py-2 text-white">
+        <h3 className="text-sm font-semibold">{g.cliente}</h3><span className="num text-sm text-blue-200">{g.cnpj ? doc(g.cnpj) : ''}</span>
       </header>
-      <div className="p-4">
+      <div className="px-3 pb-3 pt-2">
         {g.hon.length > 0 && <>
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600"><Icone nome="honorarios" className="h-3.5 w-3.5" />Honorários</p>
-          <div className="overflow-x-auto"><table className="tabela">
+          <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-600"><Icone nome="honorarios" className="h-3.5 w-3.5" />Honorários</p>
+          <div className="overflow-x-auto"><table className="tabela compacta">
             <thead><tr><th>Competência</th><th className="text-right">Valor</th><th className="text-right">Valor pago</th><th className="text-right">Saldo devedor</th><th className="text-center">Vencimento</th><th className="text-center">Status</th></tr></thead>
             <tbody>{g.hon.map(h => <tr key={h.id}>
               <td className="num">{comp(h.competencia)}</td>
-              <td className="num text-right">{moeda(h.valor_original)}{h.juros_calc > 0 && <span className="block text-[11px] text-slate-400">+ juros {moeda(h.juros_calc)}</span>}</td>
+              <td className="num text-right">{moeda(h.valor_original)}{h.juros_calc > 0 && <span className="ml-1.5 text-[11px] text-red-500" title="juros do Siscon">+{moeda(h.juros_calc)}</span>}</td>
               <td className="num text-right text-emerald-700">{h.valor_pago_acumulado ? moeda(h.valor_pago_acumulado) : '—'}</td>
               <td className="num text-right font-semibold">{moeda(h.saldo)}</td>
               <td className="num text-center">{data(h.vencimento)}</td>
@@ -278,8 +278,8 @@ function CartaoCliente({ g, whats, extrato }: { g: Grupo; whats: string | null; 
           </table></div>
         </>}
         {g.des.length > 0 && <>
-          <p className={`mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-orange-700 ${g.hon.length ? 'mt-4' : ''}`}><Icone nome="alerta" className="h-3.5 w-3.5" />Despesas extras em aberto</p>
-          <div className="overflow-x-auto"><table className="tabela">
+          <p className={`mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-orange-700 ${g.hon.length ? 'mt-2' : ''}`}><Icone nome="alerta" className="h-3.5 w-3.5" />Despesas extras em aberto</p>
+          <div className="overflow-x-auto"><table className="tabela compacta">
             <thead><tr className="[&>th]:!bg-orange-50"><th>Descrição</th><th className="text-right">Valor</th><th className="text-center">Data</th><th>Obs.</th></tr></thead>
             <tbody>{g.des.map(d => <tr key={d.id}>
               <td>{d.descricao}</td>
@@ -289,13 +289,13 @@ function CartaoCliente({ g, whats, extrato }: { g: Grupo; whats: string | null; 
             </tr>)}</tbody>
           </table></div>
         </>}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-blue-50/70 px-4 py-3 text-sm">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-blue-50/70 px-3 py-1.5 text-sm">
           <span className="text-slate-600">
             {g.hon.length > 0 && <>Honorários: <b className="num text-slate-900">{moeda(g.totHon)}</b></>}
             {g.des.length > 0 && <span className={g.hon.length ? 'ml-4' : ''}>Despesas: <b className="num text-orange-700">{moeda(g.totDes)}</b></span>}
           </span>
           <span className="flex items-center gap-3">
-            <span className="text-slate-600">Total a receber: <b className="num text-lg text-slate-900">{moeda(g.total)}</b></span>
+            <span className="text-slate-600">Total a receber: <b className="num text-base text-slate-900">{moeda(g.total)}</b></span>
             <button onClick={extrato} className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50 print:hidden">Extrato c/ Pix</button>
             {whats && <a href={whats} target="_blank" rel="noreferrer" className="rounded-md bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 print:hidden">WhatsApp</a>}
           </span>
@@ -312,40 +312,40 @@ function Financeiro({ fin, porComp, c, pRec }: { fin: Fin; porComp: { comp: stri
   const mes = pRec.split('-').reverse().join('/')
   return <>
     <h2 className="text-center text-lg font-semibold text-slate-800">Baixas realizadas no mês de {mes} (competência: {c})</h2>
-    <div className="grid gap-4 sm:grid-cols-3">
-      <div className="rounded-xl border border-blue-100 bg-blue-50 px-5 py-4 text-center"><p className="text-sm font-medium uppercase tracking-wide text-blue-800">Total honorários</p><p className="num mt-1 text-2xl font-bold text-blue-700">{moeda(fin.totHon)}</p></div>
-      <div className="rounded-xl border border-orange-100 bg-orange-50 px-5 py-4 text-center"><p className="text-sm font-medium uppercase tracking-wide text-orange-800">Total despesas</p><p className="num mt-1 text-2xl font-bold text-orange-700">{moeda(fin.totDes)}</p></div>
-      <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-5 py-4 text-center"><p className="text-sm font-medium uppercase tracking-wide text-emerald-800">Juros e outros</p><p className="num mt-1 text-2xl font-bold text-emerald-700">{moeda(fin.totOut)}</p></div>
+    <div className="grid gap-3 sm:grid-cols-3">
+      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2 text-center"><p className="text-sm font-medium uppercase tracking-wide text-blue-800">Total honorários</p><p className="num text-xl font-bold text-blue-700">{moeda(fin.totHon)}</p></div>
+      <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-2 text-center"><p className="text-sm font-medium uppercase tracking-wide text-orange-800">Total despesas</p><p className="num text-xl font-bold text-orange-700">{moeda(fin.totDes)}</p></div>
+      <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 text-center"><p className="text-sm font-medium uppercase tracking-wide text-emerald-800">Juros e outros</p><p className="num text-xl font-bold text-emerald-700">{moeda(fin.totOut)}</p></div>
     </div>
     {fin.lista.length === 0 ? <div className="rounded-xl bg-white shadow-sm"><Vazio texto={`Nenhuma baixa em ${mes}.`} /></div> : fin.lista.map(x => (
       <section key={x.cliente} className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-100 break-inside-avoid">
-        <header className="flex flex-wrap items-center justify-between gap-2 bg-[#1b2a4a] px-5 py-3 text-white"><h3 className="font-semibold">{x.cliente}</h3><span className="num text-sm text-blue-200">{x.cnpj ? doc(x.cnpj) : ''}</span></header>
-        <div className="p-4">
-          {x.hon.length > 0 && <div className="overflow-x-auto"><table className="tabela">
+        <header className="flex flex-wrap items-center justify-between gap-2 bg-[#1b2a4a] px-4 py-2 text-white"><h3 className="text-sm font-semibold">{x.cliente}</h3><span className="num text-sm text-blue-200">{x.cnpj ? doc(x.cnpj) : ''}</span></header>
+        <div className="px-3 pb-3 pt-2">
+          {x.hon.length > 0 && <div className="overflow-x-auto"><table className="tabela compacta">
             <thead><tr><th>Competência</th><th className="text-right">Valor</th><th className="text-right">Valor pago</th><th className="text-center">Vencimento</th><th className="text-center">Status</th></tr></thead>
             <tbody>{x.hon.map((h, k) => <tr key={k}><td className="num">{comp(h.comp)}</td><td className="num text-right">{moeda(h.valor)}</td><td className="num text-right font-semibold text-emerald-700">{moeda(h.pago)}</td>
               <td className="num text-center">{data(h.venc)}</td><td className="text-center">{h.status && <Selo texto={h.status} />}</td></tr>)}</tbody>
           </table></div>}
-          {x.des.length > 0 && <div className={`overflow-x-auto ${x.hon.length ? 'mt-3' : ''}`}><table className="tabela">
+          {x.des.length > 0 && <div className={`overflow-x-auto ${x.hon.length ? 'mt-3' : ''}`}><table className="tabela compacta">
             <thead><tr className="[&>th]:!bg-orange-50"><th>Despesa extra</th><th className="text-right">Valor</th><th className="text-center">Data</th></tr></thead>
             <tbody>{x.des.map((d, k) => <tr key={k}><td>{d.desc}</td><td className="num text-right font-medium text-orange-700">{moeda(d.valor)}</td><td className="num text-center">{data(d.data)}</td></tr>)}</tbody>
           </table></div>}
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-blue-50/70 px-4 py-3 text-sm text-slate-600">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-blue-50/70 px-3 py-1.5 text-sm text-slate-600">
             <span>Honorários: <b className="num text-slate-900">{moeda(x.hon.reduce((s, h) => s + h.pago, 0))}</b>
               <span className="ml-4">Despesas: <b className="num text-orange-700">{moeda(x.des.reduce((s, d) => s + d.valor, 0))}</b></span>
               {x.outros > 0 && <span className="ml-4">Juros/outros: <b className="num text-emerald-700">{moeda(x.outros)}</b></span>}
               <span className="ml-4">Data: <b className="num">{[...x.datas].sort().map(d => data(d)).join(', ')}</b></span></span>
-            <span>Total: <b className="num text-lg text-slate-900">{moeda(x.total)}</b></span>
+            <span>Total: <b className="num text-base text-slate-900">{moeda(x.total)}</b></span>
           </div>
         </div>
       </section>))}
-    <div className="flex items-center justify-between rounded-xl bg-[#1b2a4a] px-6 py-4 text-white">
-      <span className="font-semibold uppercase tracking-wide">Total geral recebido em {mes}</span><span className="num text-2xl font-bold">{moeda(fin.total)}</span>
+    <div className="flex items-center justify-between rounded-xl bg-[#1b2a4a] px-5 py-2.5 text-white">
+      <span className="font-semibold uppercase tracking-wide">Total geral recebido em {mes}</span><span className="num text-xl font-bold">{moeda(fin.total)}</span>
     </div>
 
     <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-100 break-inside-avoid">
       <header className="bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700">Posição por competência (honorários) — últimas 12</header>
-      <div className="overflow-x-auto"><table className="tabela">
+      <div className="overflow-x-auto"><table className="tabela compacta">
         <thead><tr><th>Competência</th><th className="text-right">Honorários</th><th className="text-right">Faturado</th><th className="text-right">Recebido</th><th className="text-right">Descontos</th><th className="text-right">Saldo</th><th className="text-right">% recebido</th></tr></thead>
         <tbody>{porComp.map(x => <tr key={x.comp}><td className="num">{comp(x.comp)}</td><td className="num text-right">{x.qtd}</td>
           <td className="num text-right">{moeda(x.faturado)}</td><td className="num text-right">{moeda(x.recebido)}</td><td className="num text-right">{x.desconto ? moeda(x.desconto) : '—'}</td>

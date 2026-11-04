@@ -27,6 +27,9 @@ body { @apply bg-[#f4f6fa] text-slate-800 antialiased; }
 .tabela tbody tr:hover { @apply bg-marca-50/60; }
 .tabela tbody tr:last-child td { @apply border-b-0; }
 .tabela tfoot td { @apply bg-slate-50 border-t border-slate-200; }
+/* Tabela compacta (relatórios) */
+.tabela.compacta td { @apply py-1.5; }
+.tabela.compacta thead th { @apply py-1.5; }
 
 /* Campos */
 .campo { @apply h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-marca-500 focus:ring-4 focus:ring-marca-100 disabled:bg-slate-50 disabled:text-slate-500; }
