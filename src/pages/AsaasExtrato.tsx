@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { supabase, ok, todos, type Cliente, type Honorario, type Despesa } from '../lib/supabase'
 import { moeda, data, comp, normaliza } from '../lib/format'
-import { Botao, Cabecalho, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
+import { Botao, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
+import { Icone } from '../components/icones'
 
 /** Recebimento de cobrança lido do extrato OFX do Asaas */
 type Receb = { fatura: string; data: string; valor: number; nome: string; tarifas: number }
@@ -185,13 +186,23 @@ export default function AsaasExtrato() {
   const cont = (s: Situacao) => linhas.filter(l => l.situacao === s).length
   return (
     <>
-      <Cabecalho titulo="Importar extrato do Asaas (OFX)" subtitulo="Dá baixa sem recibo nos boletos já recebidos e grava o vínculo do cliente pelo nome do Asaas"
-        acoes={<label className="inline-flex cursor-pointer items-center rounded-lg bg-marca-700 px-4 py-2 text-sm font-medium text-white hover:bg-marca-800">
-          {recebs ? 'Trocar arquivo' : 'Escolher arquivo .ofx'}<input type="file" accept=".ofx,.OFX" className="hidden" onChange={e => abrir(e.target.files?.[0])} /></label>} />
-      {carregando ? <Carregando /> : !recebs ? <Cartao><Vazio texto='No Asaas: Extrato → período desejado → Exportar → OFX. Depois escolha o arquivo aqui. Nada é baixado sem a sua confirmação.' /></Cartao> : <>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">Dá baixa sem recibo nos boletos já recebidos e grava o vínculo do cliente pelo nome do Asaas.</p>
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#204879] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#1b3d68]">
+          <Icone nome="baixar" className="h-4 w-4 rotate-180" />{recebs ? 'Trocar arquivo' : 'Escolher arquivo .ofx'}<input type="file" accept=".ofx,.OFX" className="hidden" onChange={e => abrir(e.target.files?.[0])} /></label>
+      </div>
+      {carregando ? <Carregando /> : !recebs ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[['1', 'Exporte no Asaas', 'Extrato → escolha o período → Exportar → OFX.'], ['2', 'Escolha o arquivo', 'Clique em "Escolher arquivo .ofx" acima.'],
+            ['3', 'Confira a prévia', 'Cliente e itens de cada recebimento. "Conferir" vem desmarcado.'], ['4', 'Dê a baixa', 'Só os marcados são baixados, sem recibo. Nada sem a sua confirmação.']].map(([n, t, d]) => (
+            <div key={n} className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,.04)]">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">{n}</span>
+              <p className="mt-3 font-semibold text-slate-800">{t}</p><p className="mt-1 text-sm text-slate-500">{d}</p>
+            </div>))}
+        </div>) : <>
         <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
           {(['pronto', 'conferir', 'sem_cliente', 'sem_debito', 'ja_baixado'] as Situacao[]).map(s =>
-            <span key={s} className={`rounded-full px-2.5 py-1 font-medium ring-1 ring-inset ${ROTULO[s][1]}`}>{ROTULO[s][0]}: {cont(s)}</span>)}
+            <span key={s} className={`rounded-lg px-3 py-1.5 text-sm font-medium ring-1 ring-inset ${ROTULO[s][1]}`}>{ROTULO[s][0]} <b className="num ml-1">{cont(s)}</b></span>)}
           <span className="ml-auto text-sm text-slate-500">{linhas.length} recebimentos · {moeda(linhas.reduce((s, l) => s + l.valor, 0))}</span>
         </div>
         <Cartao acoes={<><Botao variante="secundario" onClick={salvarVinculos} disabled={baixando}>Gravar vínculos de nome</Botao><Botao disabled={!sel.length || baixando} onClick={baixar}>{baixando ? 'Baixando…' : `Dar baixa nos marcados (${sel.length})`}</Botao></>}

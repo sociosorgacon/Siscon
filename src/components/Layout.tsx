@@ -15,7 +15,7 @@ const secoes: { titulo: string; itens: [string, string, NomeIcone][] }[] = [
   ] },
   { titulo: 'Gestão', itens: [
     ['/relatorios', 'Relatórios', 'relatorios'],
-    ['/asaas', 'Conferência Asaas', 'receber'],
+    ['/asaas', 'Integração Asaas', 'receber'],
     ['/configuracoes', 'Configurações', 'config'],
   ] },
 ]

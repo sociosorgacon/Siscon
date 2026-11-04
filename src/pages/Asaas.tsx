@@ -5,7 +5,8 @@ import { chamarAsaas, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/as
 import AsaasExtrato from './AsaasExtrato'
 import { moeda, data, comp, doc, normaliza } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
-import { Abas, Botao, Cabecalho, Campo, Cartao, Carregando, Indicador, Modal, Selo, Vazio, useAviso } from '../components/ui'
+import { Avatar, Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
+import { Icone, type NomeIcone } from '../components/icones'
 
 const dig = (s: string | null | undefined) => (s || '').replace(/\D/g, '')
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -28,7 +29,12 @@ export default function Asaas() {
   const [aba, setAba] = useState<'baixas' | 'extrato' | 'conferencia'>('baixas')
   return (
     <>
-      <Abas abas={[['baixas', 'Baixas automáticas'], ['extrato', 'Importar extrato (OFX)'], ['conferencia', 'Conferência de assinaturas']] as const} atual={aba} mudar={setAba} />
+      <Cabecalho icone="receber" titulo="Integração Asaas" subtitulo="Baixa automática dos boletos pagos, importação do extrato e conferência das assinaturas" />
+      <div className="mb-5 inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+        {([['baixas', 'Baixas automáticas', 'ok'], ['extrato', 'Importar extrato (OFX)', 'baixar'], ['conferencia', 'Conferência de assinaturas', 'relatorios']] as const).map(([k, t, ic]) => (
+          <button key={k} onClick={() => setAba(k)} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${aba === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+            <Icone nome={ic} className={`h-4 w-4 ${aba === k ? 'text-blue-600' : ''}`} />{t}</button>))}
+      </div>
       {aba === 'baixas' ? <Baixas /> : aba === 'extrato' ? <AsaasExtrato /> : <Conferencia />}
     </>
   )
@@ -66,19 +72,30 @@ function Baixas() {
 
   return (
     <>
-      <Cabecalho titulo="Baixas automáticas do Asaas" subtitulo="Boletos pagos no Asaas viram baixa sem recibo, com a data em que o cliente pagou"
-        acoes={<><select className="campo w-56" value={so} onChange={e => setSo(e.target.value as typeof so)}>
-          <option value="conferir">Só os que precisam de conferência</option><option value="todos">Todos os avisos</option></select>
-          <Botao variante="secundario" onClick={recarregar}>Atualizar</Botao></>} />
-      {nConferir > 0 && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        {nConferir} pagamento(s) do Asaas aguardando conferência. Na primeira vez de cada cliente, use "Vincular cliente": depois disso as baixas dele são automáticas.</div>}
+      {dados && (() => {
+        const proc = dados.ev.filter(e => e.status === 'processado' && /RECEIVED|CONFIRMED/.test(e.evento))
+        return <Resumo itens={[
+          { rotulo: 'Baixados automaticamente', valor: moeda(proc.reduce((t, e) => t + (e.valor || 0), 0)), detalhe: `${proc.length} pagamentos`, tom: 'verde' },
+          { rotulo: 'A conferir', valor: dados.ev.filter(e => e.status === 'pendente').length, detalhe: 'vincular cliente ou valor diferente', tom: 'laranja' },
+          { rotulo: 'Com erro', valor: dados.ev.filter(e => e.status === 'erro').length, detalhe: 'use Reprocessar', tom: 'vermelho' },
+          { rotulo: 'Último aviso', valor: dados.ev[0] ? data(dados.ev[0].recebido_em) : '—', detalhe: `${dados.ev.length} avisos recebidos`, tom: 'azul' },
+        ]} />
+      })()}
+      {nConferir > 0 && <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <Icone nome="alerta" className="mt-0.5 h-4 w-4 shrink-0" /><span><b>{nConferir} pagamento(s)</b> aguardando conferência. Na primeira vez de cada cliente, use <b>Vincular cliente</b>: depois disso as baixas dele são automáticas.</span></div>}
       <Cartao>
+        <div className="filtros">
+          <Pilulas atual={so} mudar={setSo} opcoes={[['conferir', 'A conferir', nConferir], ['todos', 'Todos os avisos', (dados?.ev || []).length]] as const} />
+          <span className="ml-auto" /><Botao variante="secundario" onClick={recarregar}><span className="inline-flex items-center gap-1.5"><Icone nome="alta" className="h-4 w-4" />Atualizar</span></Botao>
+        </div>
         {!dados ? <Carregando /> : lista.length === 0 ? <Vazio texto={so === 'conferir' ? 'Nada aguardando conferência.' : 'Nenhum aviso do Asaas recebido ainda.'} /> :
           <div className="overflow-x-auto"><table className="tabela">
             <thead><tr><th>Aviso</th><th>Cliente</th><th>Venc. / Pago em</th><th className="text-right">Valor</th><th>Situação</th><th className="text-right">Ações</th></tr></thead>
             <tbody>{lista.map(e => <tr key={e.id} className="align-top">
               <td>{NOMES_EVENTO[e.evento] || e.evento}<span className="block text-xs text-slate-400">{data(e.recebido_em)}</span></td>
-              <td className="!whitespace-normal min-w-[10rem] max-w-[16rem]" title={e.descricao || ''}>{nomeDe(e.customer_id) || <span className="text-xs text-slate-400">{e.customer_id || '—'}<br />(sem vínculo)</span>}</td>
+              <td className="!whitespace-normal min-w-[10rem] max-w-[16rem]" title={e.descricao || ''}>{nomeDe(e.customer_id)
+                ? <span className="flex items-center gap-2"><Avatar nome={nomeDe(e.customer_id)!} /><span className="font-medium text-slate-800">{nomeDe(e.customer_id)}</span></span>
+                : <span className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-700"><Icone nome="alerta" className="h-4 w-4" /></span><span className="text-xs text-slate-500">{e.customer_id || '—'}<br /><b className="text-amber-700">sem vínculo</b></span></span>}</td>
               <td className="num">{data(e.vencimento)}<span className="block text-xs text-slate-400">pago {data(e.data_pagamento)}</span></td>
               <td className="num text-right">{moeda(e.valor)}</td>
               <td className="!whitespace-normal min-w-[12rem]"><span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${COR_STATUS[e.status]}`}>{ROTULO_STATUS[e.status]}</span>
@@ -180,15 +197,22 @@ function Conferencia() {
 
   return (
     <>
-      <Cabecalho titulo="Conferência Asaas" subtitulo="Somente leitura: compara as assinaturas e boletos do Asaas com o Siscon"
-        acoes={<><Botao variante="secundario" onClick={recarregar}>Atualizar</Botao><Botao onClick={exportar} disabled={!r}>Exportar Excel</Botao></>} />
-      {erro ? <Cartao><p className="p-5 text-sm text-red-700">{erro}</p></Cartao> : !r || !dados ? <Carregando /> : <>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Indicador icone="receber" rotulo="Saldo na conta Asaas" valor={moeda(dados.saldo)} tom="ok" />
-          <Indicador icone="clientes" rotulo="Assinaturas ativas" valor={r.assinaturas.length} detalhe={`Total ${moeda(r.assinaturas.reduce((s, a) => s + a.valor, 0))}/mês`} />
-          <Indicador icone="alerta" rotulo="Assinaturas a conferir" valor={r.comProblema} tom={r.comProblema ? 'alerta' : 'ok'} detalhe="Valor, vencimento ou cliente diferente" />
-          <Indicador icone="honorarios" rotulo="Boletos com diferença" valor={r.cobDif} tom={r.cobDif ? 'alerta' : 'ok'} detalhe={`De ${r.cobrancas.length} em aberto no Asaas`} />
-        </div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">Somente leitura: compara as assinaturas e os boletos em aberto do Asaas com o Siscon.</p>
+        <div className="flex gap-2"><Botao variante="secundario" onClick={recarregar}>Atualizar</Botao><Botao onClick={exportar} disabled={!r}>Exportar Excel</Botao></div>
+      </div>
+      {erro ? <Aviso icone="alerta" titulo="Não foi possível consultar o Asaas agora"
+          texto={/not_allowed_ip|403/.test(erro)
+            ? 'O Asaas bloqueia consultas vindas do servidor do Siscon (bloqueio por IP na borda deles). Saldo e conferência voltam a funcionar quando o IP fixo for configurado. A baixa automática e a importação do extrato NÃO dependem disso.'
+            : 'Tente "Atualizar" daqui a pouco. Se continuar, me envie a mensagem abaixo.'}
+          detalhe={erro} />
+        : !r || !dados ? <Carregando /> : <>
+        <Resumo itens={[
+          { rotulo: 'Saldo na conta Asaas', valor: moeda(dados.saldo), tom: 'verde' },
+          { rotulo: 'Assinaturas ativas', valor: r.assinaturas.length, detalhe: `Total ${moeda(r.assinaturas.reduce((s, a) => s + a.valor, 0))}/mês`, tom: 'azul' },
+          { rotulo: 'Assinaturas a conferir', valor: r.comProblema, detalhe: 'valor, vencimento ou cliente diferente', tom: r.comProblema ? 'laranja' : 'verde' },
+          { rotulo: 'Boletos com diferença', valor: r.cobDif, detalhe: `de ${r.cobrancas.length} em aberto no Asaas`, tom: r.cobDif ? 'vermelho' : 'verde' },
+        ]} />
 
         <Cartao titulo="Assinaturas ativas no Asaas" className="mt-6">
           {r.assinaturas.length === 0 ? <Vazio texto="Nenhuma assinatura ativa." /> :
@@ -225,5 +249,19 @@ function Conferencia() {
         </Cartao>
       </>}
     </>
+  )
+}
+
+/** Quadro de aviso com ícone (erros e explicações) */
+export function Aviso({ icone, titulo, texto, detalhe }: { icone: NomeIcone; titulo: string; texto: string; detalhe?: string }) {
+  return (
+    <div className="flex gap-4 rounded-xl border border-amber-200 bg-amber-50/70 p-5">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700"><Icone nome={icone} className="h-5 w-5" /></span>
+      <div className="min-w-0">
+        <p className="font-semibold text-amber-900">{titulo}</p>
+        <p className="mt-1 text-sm text-amber-800">{texto}</p>
+        {detalhe && <p className="mt-2 break-all rounded-md bg-white/70 px-3 py-2 font-mono text-[11px] text-slate-500">{detalhe}</p>}
+      </div>
+    </div>
   )
 }
