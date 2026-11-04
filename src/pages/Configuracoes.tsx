@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { supabase, ok, todos } from '../lib/supabase'
+import { supabase, ok } from '../lib/supabase'
 import { useApp, descricoesPadrao, type Config } from '../lib/app'
 import { baixarBackup } from '../lib/backup'
-import { hojeIso } from '../lib/format'
-import { Botao, Cabecalho, Campo, Cartao, useAviso } from '../components/ui'
+import { moeda } from '../lib/format'
+import { Botao, Cabecalho, Campo, useAviso } from '../components/ui'
+import { Icone, type NomeIcone } from '../components/icones'
 
 const descricoes: Partial<Record<keyof Config, string>> = {
   salario_minimo: 'Salário mínimo vigente', vigencia_salario: 'Data de vigência do salário',
@@ -50,51 +51,82 @@ export default function Configuracoes() {
     catch (e) { avisar((e as Error).message, 'erro') }
   }
 
+  const sm = Number(String(f.salario_minimo).replace(',', '.')) || 0
+  const alterado = JSON.stringify(f) !== JSON.stringify(config)
+
   return (
     <>
-      <Cabecalho titulo="Configurações" acoes={<Botao variante="secundario" onClick={backup}>Baixar backup completo</Botao>} />
-      <form onSubmit={salvar} className="grid gap-4 lg:grid-cols-2">
-        <Cartao titulo="Cálculo dos honorários">
-          <div className="grid grid-cols-2 gap-3 p-4">
+      <Cabecalho icone="config" titulo="Configurações" subtitulo="Parâmetros de cálculo, dados do escritório que saem nos recibos e descrições padronizadas"
+        acoes={<Botao variante="secundario" onClick={backup}><span className="inline-flex items-center gap-1.5"><Icone nome="baixar" className="h-4 w-4" />Baixar backup completo</span></Botao>} />
+      <form onSubmit={salvar} className="grid gap-5 pb-24 lg:grid-cols-2">
+        <Secao icone="honorarios" cor="from-blue-600 to-blue-500" titulo="Cálculo dos honorários" descricao="Base de todos os honorários: salário mínimo × % do cliente">
+          <div className="grid grid-cols-2 gap-3">
             <Campo rotulo="Salário mínimo (R$)">{campo('salario_minimo', { inputMode: 'decimal' })}</Campo>
             <Campo rotulo="Vigência">{campo('vigencia_salario', { type: 'date' })}</Campo>
-            <Campo rotulo="Juros ao mês (fixo)"><input className="campo bg-slate-50" value="1,55%" disabled /></Campo>
+            <Campo rotulo="Juros ao mês (fixo)"><input className="campo bg-slate-50 text-slate-500" value="1,55% a.m. (simples)" disabled /></Campo>
             <Campo rotulo="Competência atual (MM/AAAA)">{campo('competencia_atual')}</Campo>
-            <p className="col-span-2 text-xs text-slate-500">
-              Novo salário mínimo vale para os honorários gerados a partir de agora; os já lançados mantêm o valor. Juros simples de 1,55% ao mês sobre o valor original, contados a cada virada de competência, só para clientes com multa por atraso.
-            </p>
           </div>
-        </Cartao>
-        <Cartao titulo="Dados do escritório (aparecem no recibo)">
-          <div className="grid grid-cols-2 gap-3 p-4">
+          <div className="mt-4 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-center">
+            {[10, 40, 80].map(p => <div key={p}><p className="text-[11px] text-slate-500">Cliente com {p}%</p><p className="num text-sm font-semibold text-slate-800">{moeda(sm * p / 100)}</p></div>)}
+          </div>
+          <p className="mt-3 text-xs text-slate-500">Novo salário mínimo vale para os honorários gerados a partir de agora; os já lançados mantêm o valor. Juros só para clientes com multa por atraso, contados a cada virada de competência. Para a virada normal do mês, use "Avançar competência" em Honorários.</p>
+        </Secao>
+
+        <Secao icone="recibos" cor="from-emerald-600 to-emerald-500" titulo="Dados do escritório" descricao="Aparecem no recibo, no extrato de débitos e no Pix">
+          <div className="grid grid-cols-2 gap-3">
             <Campo rotulo="Nome" className="col-span-2">{campo('escritorio_nome')}</Campo>
             <Campo rotulo="CNPJ">{campo('escritorio_cnpj')}</Campo>
             <Campo rotulo="Telefone">{campo('escritorio_telefone')}</Campo>
             <Campo rotulo="Endereço" className="col-span-2">{campo('escritorio_endereco')}</Campo>
             <Campo rotulo="Cidade/UF">{campo('escritorio_cidade')}</Campo>
             <Campo rotulo="Chave Pix (vazio = CNPJ)">{campo('pix_chave', { placeholder: f.escritorio_cnpj })}</Campo>
-            <p className="col-span-2 text-xs text-slate-500">O QR Code Pix dos extratos é gerado com o valor exato do débito do cliente. Confira se a chave está cadastrada na conta que recebe.</p>
           </div>
-        </Cartao>
-        <Cartao titulo="Descrições de despesas extras">
-          <div className="grid gap-3 p-4">
-            <p className="text-xs text-slate-500">Opções que aparecem no campo Descrição ao lançar uma despesa (ainda é possível digitar outra). Clique em "Salvar configurações" para gravar.</p>
-            <div className="flex gap-2">
-              <input className="campo" placeholder="Nova descrição…" value={novaDesc} onChange={e => setNovaDesc(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarDesc() } }} />
-              <Botao type="button" variante="secundario" onClick={adicionarDesc}>Adicionar</Botao>
+          {/* prévia do cabeçalho do recibo */}
+          <div className="mt-4 flex items-center gap-4 rounded-lg border border-dashed border-slate-300 p-3">
+            <img src="/logo.png" alt="" className="h-9" />
+            <div className="min-w-0 text-xs text-slate-500">
+              <p className="truncate font-semibold text-slate-800">{f.escritorio_nome || '—'}</p>
+              <p className="truncate">CNPJ {f.escritorio_cnpj || '—'} · {f.escritorio_endereco || 'endereço'} · {f.escritorio_cidade || ''}</p>
+              <p>Pix: <span className="num">{f.pix_chave || f.escritorio_cnpj || '—'}</span></p>
             </div>
-            <ul className="max-h-72 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
-              {listaDesc.length === 0 && <li className="px-3 py-2 text-sm text-slate-400">Nenhuma descrição cadastrada.</li>}
-              {listaDesc.map(d => <li key={d} className="flex items-center justify-between px-3 py-2 text-sm">
-                <span>{d}</span>
-                <Botao type="button" variante="link" onClick={() => mudarDesc(listaDesc.filter(x => x !== d))}>Remover</Botao>
-              </li>)}
-            </ul>
+            <span className="ml-auto shrink-0 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase text-slate-500">prévia do recibo</span>
           </div>
-        </Cartao>
-        <div className="lg:col-span-2 flex justify-end"><Botao disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar configurações'}</Botao></div>
+        </Secao>
+
+        <Secao icone="despesas" cor="from-amber-500 to-amber-400" titulo="Descrições de despesas extras" descricao={`Sugestões do campo Descrição e base dos tipos no Painel · ${listaDesc.length} cadastradas`} className="lg:col-span-2">
+          <div className="flex gap-2">
+            <input className="campo" placeholder="Nova descrição (ex.: Fechamento de Escrita)" value={novaDesc} onChange={e => setNovaDesc(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarDesc() } }} />
+            <Botao type="button" variante="secundario" onClick={adicionarDesc}><span className="inline-flex items-center gap-1"><Icone nome="mais" className="h-4 w-4" />Adicionar</span></Botao>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {listaDesc.length === 0 && <p className="text-sm text-slate-400">Nenhuma descrição cadastrada.</p>}
+            {listaDesc.map(d => <span key={d} className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 py-1 pl-3 pr-1.5 text-sm text-amber-900 ring-1 ring-inset ring-amber-200">
+              {d}<button type="button" title="Remover" onClick={() => mudarDesc(listaDesc.filter(x => x !== d))} className="rounded-full p-0.5 text-amber-700 hover:bg-amber-200/60"><Icone nome="fechar" className="h-3.5 w-3.5" /></button></span>)}
+          </div>
+        </Secao>
+
+        {/* Barra fixa de salvar */}
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/90 backdrop-blur lg:left-64">
+          <div className="mx-auto flex max-w-7xl items-center justify-end gap-3 px-6 py-3">
+            <span className={`text-sm ${alterado ? 'font-medium text-amber-700' : 'text-slate-400'}`}>{alterado ? '● Alterações não salvas' : 'Tudo salvo'}</span>
+            {alterado && <Botao type="button" variante="secundario" onClick={() => setF(config)}>Descartar</Botao>}
+            <Botao disabled={salvando || !alterado}>{salvando ? 'Salvando…' : 'Salvar configurações'}</Botao>
+          </div>
+        </div>
       </form>
     </>
+  )
+}
+
+function Secao({ icone, cor, titulo, descricao, children, className = '' }: { icone: NomeIcone; cor: string; titulo: string; descricao: string; children: React.ReactNode; className?: string }) {
+  return (
+    <section className={`overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,.04)] ${className}`}>
+      <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+        <span className={`flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br ${cor} text-white shadow-sm`}><Icone nome={icone} className="h-4 w-4" /></span>
+        <div><h2 className="text-[15px] font-semibold text-slate-800">{titulo}</h2><p className="text-xs text-slate-500">{descricao}</p></div>
+      </header>
+      <div className="p-5">{children}</div>
+    </section>
   )
 }

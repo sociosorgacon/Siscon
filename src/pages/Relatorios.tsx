@@ -7,7 +7,7 @@ import { moeda, data, comp, compParaIso, ultimasCompetencias, doc, normaliza } f
 import { baixarExcel } from '../lib/excel'
 import { mesSeguinte } from './Painel'
 import { Icone } from '../components/icones'
-import { Carregando, Selo, Vazio, useAviso } from '../components/ui'
+import { Cabecalho, Carregando, Selo, Vazio, useAviso } from '../components/ui'
 
 type Aba = 'mensal' | 'inadimplencia' | 'financeiro'
 type ItemRecibo = { tipo: string; descricao: string; valor: number; desconto: number; competencia: string | null; cliente_id: string | null; cliente_nome: string | null; honorario_id: string | null; despesa_id: string | null }
@@ -171,21 +171,20 @@ export default function Relatorios() {
 
   return (
     <>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3 print:hidden">
-        <div><h1 className="text-2xl font-semibold tracking-tight text-slate-900">Relatórios</h1><p className="text-sm text-slate-500">Relatórios financeiros detalhados</p></div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={exportar} disabled={!dados} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50">
-            <Icone nome="relatorios" className="h-4 w-4" /> Relatório completo (Excel)</button>
-          <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
-            <Icone nome="recibos" className="h-4 w-4" /> Imprimir / PDF</button>
+      <div className="print:hidden">
+        <Cabecalho icone="relatorios" titulo="Relatórios" subtitulo="Débitos em aberto, inadimplência e recebimentos, com Pix, WhatsApp, Excel e impressão"
+          acoes={<>
+            <button onClick={exportar} disabled={!dados} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50">
+              <Icone nome="baixar" className="h-4 w-4" /> Relatório completo (Excel)</button>
+            <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#204879] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#1b3d68]">
+              <Icone nome="recibos" className="h-4 w-4" /> Imprimir / PDF</button>
+          </>} />
+        <div className="mb-5 inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+          {([['mensal', 'Relatório Mensal', 'calendario'], ['inadimplencia', 'Inadimplência', 'alerta'], ['financeiro', 'Financeiro Geral', 'relatorios']] as const).map(([k, t, ic]) => (
+            <button key={k} onClick={() => { setAba(k); setSel(null) }}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${aba === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+              <Icone nome={ic} className={`h-4 w-4 ${aba === k ? 'text-blue-600' : ''}`} />{t}</button>))}
         </div>
-      </div>
-
-      <div className="mb-5 flex flex-wrap gap-2 print:hidden">
-        {([['mensal', 'Relatório Mensal', 'calendario'], ['inadimplencia', 'Inadimplência', 'alerta'], ['financeiro', 'Financeiro Geral', 'relatorios']] as const).map(([k, t, ic]) => (
-          <button key={k} onClick={() => { setAba(k); setSel(null) }}
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${aba === k ? 'bg-blue-600 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
-            <Icone nome={ic} className="h-4 w-4" />{t}</button>))}
       </div>
 
       {!dados ? <Carregando /> : (
