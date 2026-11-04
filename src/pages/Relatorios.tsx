@@ -280,12 +280,12 @@ function CartaoCliente({ g, whats, extrato }: { g: Grupo; whats: string | null; 
         {g.des.length > 0 && <>
           <p className={`mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-orange-700 ${g.hon.length ? 'mt-2' : ''}`}><Icone nome="alerta" className="h-3.5 w-3.5" />Despesas extras em aberto</p>
           <div className="overflow-x-auto"><table className="tabela compacta">
-            <thead><tr className="[&>th]:!bg-orange-50"><th>Descrição</th><th className="text-right">Valor</th><th className="text-center">Data</th><th>Obs.</th></tr></thead>
+            <thead><tr className="[&>th]:!bg-orange-50"><th>Descrição</th><th className="text-right">Valor</th><th className="text-center">Data</th>{g.des.some(d => d.observacoes) && <th>Obs.</th>}</tr></thead>
             <tbody>{g.des.map(d => <tr key={d.id}>
               <td>{d.descricao}</td>
               <td className="num text-right font-medium text-orange-700">{moeda(d.saldo)}{d.valor_pago > 0 && <span className="block text-[11px] text-slate-400">de {moeda(d.valor)}</span>}</td>
               <td className="num text-center">{data(d.data)}</td>
-              <td className="max-w-xs truncate text-slate-500" title={d.observacoes || ''}>{d.observacoes || '—'}</td>
+              {g.des.some(x => x.observacoes) && <td className="max-w-xs truncate text-slate-500" title={d.observacoes || ''}>{d.observacoes || '—'}</td>}
             </tr>)}</tbody>
           </table></div>
         </>}
