@@ -207,9 +207,9 @@ export default function Relatorios() {
           )}
 
           <div className="min-w-0 space-y-3">
-            {/* Bloco Pix */}
+            {/* Bloco Pix: só na impressão */}
             {aba !== 'financeiro' && (
-              <div className="mx-auto flex w-fit items-center gap-5 rounded-xl bg-white px-6 py-3 shadow-sm ring-1 ring-slate-100">
+              <div className="mx-auto hidden w-fit items-center gap-5 rounded-xl bg-white px-6 py-3 shadow-sm ring-1 ring-slate-100 print:flex">
                 <img src="/logo.png" alt="Orgacon" className="h-10" />
                 <span className="h-16 w-px bg-slate-300" />
                 <div className="text-center">
