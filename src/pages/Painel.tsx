@@ -20,6 +20,10 @@ export default function Painel() {
   const { config } = useApp()
   const avisar = useAviso()
   const [det, setDet] = useState<QualIndicador | null>(null)
+  // Valores do Painel ocultos por padrão (privacidade); a escolha fica salva neste navegador
+  const [oculto, setOculto] = useState(() => { try { return localStorage.getItem('siscon_ocultar_valores') !== 'nao' } catch { return true } })
+  const alternarOculto = () => setOculto(o => { try { localStorage.setItem('siscon_ocultar_valores', o ? 'nao' : 'sim') } catch { /* sem armazenamento */ } return !o })
+  const v = (n: number) => oculto ? 'R$ ••••••' : moeda(n)
   const comps = useMemo(() => config.competencia_atual ? ultimasCompetencias(config.competencia_atual, 18).slice(1) : [], [config.competencia_atual])
   const [compSel, setCompSel] = useState('')
   const c = compSel || config.competencia_atual
@@ -91,6 +95,9 @@ export default function Painel() {
           <option value={config.competencia_atual}>{config.competencia_atual} (atual)</option>
           {comps.filter(x => x !== config.competencia_atual).map(m => <option key={m} value={m}>{m}</option>)}
         </select>
+        <button onClick={alternarOculto} title={oculto ? 'Mostrar os valores' : 'Ocultar os valores'}
+          className="ml-auto inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          <Icone nome={oculto ? 'olho' : 'olhoFechado'} className="h-4 w-4" />{oculto ? 'Mostrar valores' : 'Ocultar valores'}</button>
       </div>
 
       {!r ? <Carregando /> : <>
@@ -99,11 +106,11 @@ export default function Painel() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Cartões clicáveis: abrem o relatório do indicador, totalizado por tipo */}
           <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('receber')} title="Ver detalhes">
-            <Indicador icone="calendario" rotulo="A receber no mês" valor={moeda(r.aReceber)} detalhe={`Saldo da competência ${c} (honorários + despesas) · clique para detalhar`} /></button>
+            <Indicador icone="calendario" rotulo="A receber no mês" valor={v(r.aReceber)} detalhe={`Saldo da competência ${c} (honorários + despesas) · clique para detalhar`} /></button>
           <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('recebido')} title="Ver detalhes">
-            <Indicador icone="ok" rotulo="Recebido no mês" valor={moeda(r.recebido)} tom="ok" detalhe={`Baixas em ${mR}/${aR}, com e sem recibo · clique para detalhar`} /></button>
+            <Indicador icone="ok" rotulo="Recebido no mês" valor={v(r.recebido)} tom="ok" detalhe={`Baixas em ${mR}/${aR}, com e sem recibo · clique para detalhar`} /></button>
           <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('atraso')} title="Ver detalhes">
-            <Indicador icone="alerta" rotulo="Total em atraso" valor={moeda(r.atraso)} tom="perigo" detalhe={`Competências anteriores a ${c} · clique para detalhar`} /></button>
+            <Indicador icone="alerta" rotulo="Total em atraso" valor={v(r.atraso)} tom="perigo" detalhe={`Competências anteriores a ${c} · clique para detalhar`} /></button>
           <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('inadimplentes')} title="Ver detalhes">
             <Indicador icone="clientes" rotulo="Clientes inadimplentes" valor={r.ranking.length} tom="alerta" detalhe="Com honorário em aberto de competência anterior · clique para detalhar" /></button>
         </div>
