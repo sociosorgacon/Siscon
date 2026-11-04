@@ -8,6 +8,7 @@ import { Cartao, Carregando, Indicador, Vazio, useAviso } from '../components/ui
 import { Icone } from '../components/icones'
 import { baixarBackup } from '../lib/backup'
 import { imprimirRecibo } from '../lib/recibo-pdf'
+import DetalheIndicador, { type Indicador as QualIndicador } from './PainelDetalhe'
 
 /** Mês seguinte à competência, como prefixo 'AAAA-MM' (regra do "Recebido no mês") */
 export const mesSeguinte = (mmaaaa: string) => {
@@ -18,6 +19,7 @@ export const mesSeguinte = (mmaaaa: string) => {
 export default function Painel() {
   const { config } = useApp()
   const avisar = useAviso()
+  const [det, setDet] = useState<QualIndicador | null>(null)
   const comps = useMemo(() => config.competencia_atual ? ultimasCompetencias(config.competencia_atual, 18).slice(1) : [], [config.competencia_atual])
   const [compSel, setCompSel] = useState('')
   const c = compSel || config.competencia_atual
@@ -95,10 +97,15 @@ export default function Painel() {
         {!!pendAsaas.dados && <Link to="/asaas" className="mb-4 block rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100">
           {pendAsaas.dados} pagamento(s) do Asaas aguardando conferência para a baixa automática. Clique para ver.</Link>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Indicador icone="calendario" rotulo="A receber no mês" valor={moeda(r.aReceber)} detalhe={`Saldo da competência ${c} (honorários + despesas)`} />
-          <Indicador icone="ok" rotulo="Recebido no mês" valor={moeda(r.recebido)} tom="ok" detalhe={`Baixas em ${mR}/${aR}, com e sem recibo`} />
-          <Indicador icone="alerta" rotulo="Total em atraso" valor={moeda(r.atraso)} tom="perigo" detalhe={`Competências anteriores a ${c}`} />
-          <Indicador icone="clientes" rotulo="Clientes inadimplentes" valor={r.ranking.length} tom="alerta" detalhe="Com honorário em aberto de competência anterior" />
+          {/* Cartões clicáveis: abrem o relatório do indicador, totalizado por tipo */}
+          <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('receber')} title="Ver detalhes">
+            <Indicador icone="calendario" rotulo="A receber no mês" valor={moeda(r.aReceber)} detalhe={`Saldo da competência ${c} (honorários + despesas) · clique para detalhar`} /></button>
+          <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('recebido')} title="Ver detalhes">
+            <Indicador icone="ok" rotulo="Recebido no mês" valor={moeda(r.recebido)} tom="ok" detalhe={`Baixas em ${mR}/${aR}, com e sem recibo · clique para detalhar`} /></button>
+          <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('atraso')} title="Ver detalhes">
+            <Indicador icone="alerta" rotulo="Total em atraso" valor={moeda(r.atraso)} tom="perigo" detalhe={`Competências anteriores a ${c} · clique para detalhar`} /></button>
+          <button className="text-left transition hover:-translate-y-0.5 hover:drop-shadow-md" onClick={() => setDet('inadimplentes')} title="Ver detalhes">
+            <Indicador icone="clientes" rotulo="Clientes inadimplentes" valor={r.ranking.length} tom="alerta" detalhe="Com honorário em aberto de competência anterior · clique para detalhar" /></button>
         </div>
 
         <Cartao titulo="Recebimentos x Pendências (últimos 6 meses)" className="mt-6"><Grafico linhas={r.grafico} /></Cartao>
@@ -132,6 +139,7 @@ export default function Painel() {
           </Cartao>
         </div>
       </>}
+      {det && dados && r && <DetalheIndicador qual={det} c={c} iso={compParaIso(c)} pRec={r.pRec} hon={dados.hon} des={dados.des} fechar={() => setDet(null)} />}
     </>
   )
 }
