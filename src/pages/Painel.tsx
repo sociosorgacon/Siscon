@@ -108,19 +108,7 @@ export default function Painel() {
             <Indicador icone="clientes" rotulo="Clientes inadimplentes" valor={r.ranking.length} tom="alerta" detalhe="Com honorário em aberto de competência anterior · clique para detalhar" /></button>
         </div>
 
-        <Cartao titulo="Recebimento dos honorários por competência (últimos 6 meses)" className="mt-6"><Grafico linhas={r.grafico} sel={c} escolher={m => setCompSel(m === config.competencia_atual ? '' : m)} /></Cartao>
-
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <Cartao titulo="Inadimplência" acoes={<Link to="/relatorios" className="text-sm text-marca-700 hover:underline">Ver todas</Link>}>
-            {r.ranking.length === 0 ? <Vazio texto="Nenhum cliente em atraso." /> :
-              <ol className="divide-y divide-slate-100">
-                {r.ranking.slice(0, 6).map((x, i) => (
-                  <li key={x.nome} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
-                    <span className="flex min-w-0 items-center gap-3"><span className="w-6 shrink-0 text-xs text-slate-400">{i + 1}º</span><span className="truncate font-medium text-slate-700">{x.nome}</span></span>
-                    <span className="num shrink-0 font-semibold text-red-600">{moeda(x.total)}</span>
-                  </li>))}
-              </ol>}
-          </Cartao>
           <Cartao titulo={<span className="inline-flex items-center gap-2"><Icone nome="ok" className="h-4 w-4 text-emerald-600" />Últimos recebimentos</span>}
             acoes={<Link to="/recibos" className="text-sm text-marca-700 hover:underline">Todas as baixas</Link>}>
             {r.ultimos.length === 0 ? <Vazio texto="Nenhum recebimento." /> :
@@ -136,6 +124,20 @@ export default function Painel() {
                     <span className="num shrink-0 font-semibold text-emerald-600">{moeda(x.valor)}</span>
                   </li>))}
               </ul>}
+          </Cartao>
+          <Cartao titulo="Recebimento dos honorários (últimos 6 meses)"><Grafico linhas={r.grafico} sel={c} escolher={m => setCompSel(m === config.competencia_atual ? '' : m)} /></Cartao>
+        </div>
+
+        <div className="mt-6">
+          <Cartao titulo="Inadimplência" acoes={<Link to="/relatorios" className="text-sm text-marca-700 hover:underline">Ver todas</Link>}>
+            {r.ranking.length === 0 ? <Vazio texto="Nenhum cliente em atraso." /> :
+              <ol className="grid divide-slate-100 sm:grid-cols-2 [&>li]:border-b [&>li]:border-slate-100">
+                {r.ranking.slice(0, 10).map((x, i) => (
+                  <li key={x.nome} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                    <span className="flex min-w-0 items-center gap-3"><span className="w-6 shrink-0 text-xs text-slate-400">{i + 1}º</span><span className="truncate font-medium text-slate-700">{x.nome}</span></span>
+                    <span className="num shrink-0 font-semibold text-red-600">{moeda(x.total)}</span>
+                  </li>))}
+              </ol>}
           </Cartao>
         </div>
       </>}
@@ -158,29 +160,21 @@ function Grafico({ linhas, sel, escolher }: { linhas: { mes: string; recebido: n
   const pct = (l: { recebido: number; pendente: number }) => { const t = l.recebido + l.pendente; return t ? Math.round((l.recebido / t) * 100) : 0 }
   const atual = linhas.find(l => l.mes === sel) || linhas[linhas.length - 1]
   const media = linhas.length ? Math.round(linhas.reduce((s, l) => s + pct(l), 0) / linhas.length) : 0
-  const ALT = 130 // px da área de plotagem
+  const ALT = 120 // px da área de plotagem
 
   return (
     <div className="px-5 py-4">
-      {/* Destaques: o número que importa antes do gráfico */}
-      {atual && <div className="mb-3 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-lg bg-slate-50 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Recebido da competência {atual.mes}</p>
-          <p className="flex items-baseline gap-2"><span className="num text-lg font-bold text-slate-900">{pct(atual)}%</span>
-            <span className={`text-xs font-medium ${pct(atual) >= media ? 'text-emerald-700' : 'text-red-700'}`}>{pct(atual) >= media ? '▲' : '▼'} média de 6 meses: {media}%</span></p>
-        </div>
-        <div className="rounded-lg bg-slate-50 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Recebido</p>
-          <p className="num text-lg font-bold text-slate-900">{moeda(atual.recebido)}</p></div>
-        <div className="rounded-lg bg-slate-50 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Ainda em aberto</p>
-          <p className="num text-lg font-bold text-slate-900">{moeda(atual.pendente)}</p></div>
-      </div>}
+      {/* Destaque em uma linha: % recebido da competência × média */}
+      {atual && <p className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-slate-600">
+        <span><b className="num text-lg text-slate-900">{pct(atual)}%</b> recebido em {atual.mes}</span>
+        <span className={`text-xs font-medium ${pct(atual) >= media ? 'text-emerald-700' : 'text-red-700'}`}>{pct(atual) >= media ? '▲' : '▼'} média 6 meses: {media}%</span>
+        <span className="text-xs text-slate-500">· em aberto <b className="num text-slate-800">{moeda(atual.pendente)}</b></span>
+      </p>}
 
       <div className="mb-2 flex items-center gap-4 text-xs text-slate-600">
         <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-[#2563eb]" />Recebido</span>
         <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-[#ef4444]" />Em aberto</span>
-        <span className="ml-auto text-slate-400">Clique numa barra para ver a competência</span>
+        <span className="ml-auto text-slate-400">clique na barra para ver o mês</span>
       </div>
 
       <div className="flex gap-3">
