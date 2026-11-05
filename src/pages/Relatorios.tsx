@@ -134,14 +134,15 @@ export default function Relatorios() {
     return [...m.values()].sort((a, b) => b.comp.localeCompare(a.comp)).slice(0, 12)
   }, [dados])
 
-  /** PDF compacto dos débitos (aba atual e clientes selecionados): uma linha por cliente, para imprimir poucas folhas */
+  /** PDF compacto: débitos em aberto até a COMPETÊNCIA ATUAL (sem parcelas futuras), clientes selecionados ou todos;
+   *  uma linha por empresa com totalizador (honorários, despesas e total) */
   async function pdfCompleto() {
+    if (!abertos) return
+    const atual = compParaIso(config.competencia_atual)
+    const grupos = agrupar(abertos.hon.filter(h => h.competencia <= atual), abertos.des.filter(d => d.competencia <= atual))
+      .filter(g => !sel || sel.has(g.id))
     try {
-      await gerarRelatorioDebitosPdf({
-        titulo: aba === 'inadimplencia' ? 'INADIMPLÊNCIA' : 'DÉBITOS EM ABERTO',
-        subtitulo: aba === 'inadimplencia' ? `Competências anteriores a ${c}` : `Até a competência ${c}`,
-        grupos: visiveis,
-      }, escritorioDe(config))
+      await gerarRelatorioDebitosPdf({ titulo: 'DÉBITOS EM ABERTO', subtitulo: `Até a competência ${config.competencia_atual}`, grupos }, escritorioDe(config))
     } catch (e) { avisar('Erro ao gerar o PDF: ' + (e as Error).message, 'erro') }
   }
 
@@ -186,7 +187,7 @@ export default function Relatorios() {
       <div className="print:hidden">
         <Cabecalho icone="relatorios" titulo="Relatórios" subtitulo="Débitos em aberto, inadimplência e recebimentos, com Pix, WhatsApp, Excel e impressão"
           acoes={<>
-            <button onClick={pdfCompleto} disabled={!dados || aba === 'financeiro'} title={aba === 'financeiro' ? 'Disponível nas abas Relatório Mensal e Inadimplência' : 'Uma linha por cliente, para imprimir poucas folhas'}
+            <button onClick={pdfCompleto} disabled={!dados} title={`Débitos em aberto até a competência atual (${config.competencia_atual}), uma linha por empresa`}
               className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50">
               <Icone nome="baixar" className="h-4 w-4" /> Relatório completo (PDF)</button>
             <button onClick={exportar} disabled={!dados} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-50">Excel</button>

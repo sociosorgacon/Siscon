@@ -2,7 +2,7 @@ import type { Honorario, Despesa } from './supabase'
 import { moeda, data, hojeIso } from './format'
 import { AZUL, CINZA, FUNDO, cabecalho, rodape, entregar, type Escritorio } from './pdf-base'
 
-type GrupoPdf = { cliente: string; cnpj: string; hon: Honorario[]; des: Despesa[]; total: number }
+type GrupoPdf = { cliente: string; cnpj: string; hon: Honorario[]; des: Despesa[]; totHon: number; totDes: number; total: number }
 
 const mmaa = (iso: string) => `${iso.slice(5, 7)}/${iso.slice(2, 4)}`
 const n2 = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -17,14 +17,15 @@ export async function gerarRelatorioDebitosPdf(d: { titulo: string; subtitulo: s
   const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
   const L = 12, R = 198
-  const col = { cli: L, itens: L + 66, total: R }
-  const largCli = 63, largItens = R - col.itens - 24
+  const col = { cli: L, itens: L + 62, hon: R - 38, des: R - 19, total: R }   // totalizador por empresa: honorários | despesas | total
+  const largCli = 59, largItens = col.hon - 20 - col.itens
   let y = await cabecalho(pdf, esc, d.titulo, d.subtitulo) - 4
 
   const cab = () => {
     pdf.setFillColor(...AZUL); pdf.rect(L, y - 3.6, R - L, 5.2, 'F')
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(255)
-    pdf.text('CLIENTE', col.cli + 1.5, y); pdf.text('DÉBITOS EM ABERTO (competência · valor)', col.itens, y)
+    pdf.text('CLIENTE', col.cli + 1.5, y); pdf.text('DÉBITOS EM ABERTO', col.itens, y)
+    pdf.text('HONOR.', col.hon - 1, y, { align: 'right' }); pdf.text('DESP.', col.des - 1, y, { align: 'right' })
     pdf.text('TOTAL', col.total - 1.5, y, { align: 'right' })
     y += 4.6
   }
@@ -48,6 +49,8 @@ export async function gerarRelatorioDebitosPdf(d: { titulo: string; subtitulo: s
     if (g.cnpj) pdf.text(docFmt(g.cnpj), col.cli + 1.5, y + 3.2)
     pdf.setFontSize(7.5); pdf.setTextColor(50)
     linhasItens.forEach((t, i) => pdf.text(t, col.itens, y + i * 3.3))
+    pdf.text(g.totHon ? n2(g.totHon) : '—', col.hon - 1, y, { align: 'right' })
+    pdf.text(g.totDes ? n2(g.totDes) : '—', col.des - 1, y, { align: 'right' })
     pdf.setFont('helvetica', 'bold'); pdf.setTextColor(30)
     pdf.text(n2(g.total), col.total - 1.5, y, { align: 'right' })
     y += alt
