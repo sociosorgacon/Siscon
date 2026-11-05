@@ -109,7 +109,11 @@ export default function AsaasAjustes() {
       const esperado = r2(Math.round(sm * c!.percentual_honorario) / 100 + fixas)
       return { s, c: c!, esperado, fixas }
     }).filter(x => Math.abs(x.esperado - x.s.valor) > 0.009 && x.c.status === 'Ativo' && x.esperado > 0)
-    return { propostas, assinaturas }
+    // mostra só os boletos que vencem no mês atual; os dos meses seguintes aparecem no mês do vencimento
+    // (a distribuição das despesas continua considerando todos os boletos pendentes)
+    const mes = hoje.slice(0, 7)
+    const doMes = propostas.filter(p => p.vencimento.startsWith(mes))
+    return { propostas: doMes, depois: propostas.length - doMes.length, mes, assinaturas }
   }, [dados, desde, config.competencia_atual, config.salario_minimo])
 
   const sel = marcados ?? new Set((r?.propostas || []).filter(p => !p.avisos.length).map(p => p.id))
@@ -163,16 +167,17 @@ export default function AsaasAjustes() {
 
   return <>
     <Resumo itens={[
-      { rotulo: 'Boletos a ajustar', valor: r.propostas.length, detalhe: 'pendentes no Asaas', tom: r.propostas.length ? 'laranja' : 'verde' },
+      { rotulo: 'Boletos a ajustar', valor: r.propostas.length, detalhe: `vencimento em ${r.mes.slice(5)}/${r.mes.slice(0, 4)}`, tom: r.propostas.length ? 'laranja' : 'verde' },
       { rotulo: 'Selecionados', valor: sel.size, detalhe: `diferença ${moeda(totalDif)}`, tom: 'azul' },
       { rotulo: 'Assinaturas com valor diferente', valor: r.assinaturas.length, detalhe: 'honorário + fixas', tom: r.assinaturas.length ? 'laranja' : 'verde' },
     ]} />
     <p className="mb-3 text-sm text-slate-500">O boleto de cada competência recebe o honorário e as despesas extras dela; despesa cujo boleto já foi pago ou venceu vai para o próximo boleto pendente. Nada é alterado no Asaas sem você confirmar. Despesas com competência anterior a {comp(desde)} não entram (já cobradas à mão).</p>
 
-    <Cartao titulo="Boletos pendentes a ajustar" acoes={<div className="flex gap-2">
+    <Cartao titulo={`Boletos com vencimento em ${r.mes.slice(5)}/${r.mes.slice(0, 4)} a ajustar`} acoes={<div className="flex gap-2">
       <Botao variante="secundario" onClick={() => { setMarcados(null); recarregar() }}>Atualizar</Botao>
       <Botao onClick={aplicarBoletos} disabled={aplicando || !sel.size}>{aplicando ? 'Alterando…' : `Alterar ${sel.size} no Asaas`}</Botao></div>}>
-      {r.propostas.length === 0 ? <Vazio texto="Nenhum boleto pendente precisa de ajuste." /> :
+      {r.depois > 0 && <p className="border-b border-slate-100 bg-slate-50 px-5 py-2 text-xs text-slate-500">{r.depois} ajuste(s) em boletos dos meses seguintes aparecerão aqui no mês do vencimento.</p>}
+      {r.propostas.length === 0 ? <Vazio texto="Nenhum boleto deste mês precisa de ajuste." /> :
         <ul className="divide-y divide-slate-100">
           {r.propostas.map(p => (
             <li key={p.id} className="flex gap-3 px-5 py-3 text-sm">
