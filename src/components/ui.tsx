@@ -185,7 +185,8 @@ export function Pilulas<T extends string>({ opcoes, atual, mudar }: { opcoes: re
 /** Iniciais do cliente num círculo (cor fixa por nome) */
 const coresAvatar = ['bg-blue-100 text-blue-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-800', 'bg-violet-100 text-violet-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700', 'bg-teal-100 text-teal-700', 'bg-orange-100 text-orange-700']
 export function Avatar({ nome }: { nome: string }) {
-  const p = (nome || '?').replace(/[^A-Za-zÀ-ú ]/g, ' ').split(/\s+/).filter(w => w.length > 1 && !/^(de|da|do|dos|das|e|ltda|me|eireli|cia)$/i.test(w))
+  // Iniciais da razão social: primeira letra das duas primeiras palavras, inclusive abreviações ("A. C. de Oliveira" → AC, "R & L Elétrica" → RL)
+  const p = (nome || '?').replace(/[^A-Za-zÀ-ú ]/g, ' ').split(/\s+/).filter(w => w && !/^(de|da|do|dos|das|e|ltda|me|eireli|cia|s|a)$/i.test(w) || /^[A-Z]$/.test(w))
   const ini = ((p[0]?.[0] || nome[0] || '?') + (p[1]?.[0] || '')).toUpperCase()
   let h = 0; for (const ch of nome) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   return <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${coresAvatar[h % coresAvatar.length]}`}>{ini}</span>
