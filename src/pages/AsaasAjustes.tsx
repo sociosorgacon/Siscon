@@ -51,6 +51,9 @@ export default function AsaasAjustes() {
     const pend = dados.cobrancas.filter(p => p.status === 'PENDING' && p.assinatura && p.vencimento >= hoje)
       .map(p => ({ p, c: acha(p.cliente_asaas, p.cpfCnpj) })).filter(x => x.c) as { p: CobrancaAsaas; c: Cliente }[]
     const pendIds = new Set(pend.map(x => x.p.id))
+    // cliente cobrado no boleto de outro (boleto_cliente_id), ex.: Samira no boleto do Laboratório Alfa
+    const pag = (id: string) => dados.cli.find(x => x.id === id)?.boleto_cliente_id || id
+    const nomeCurto = (id: string) => (dados.cli.find(x => x.id === id)?.razao_social || '').split(' ').slice(0, 2).join(' ')
     const assinaturaDe = (id: string | null) => dados.assinaturas.find(s => s.id === id)
 
     // cada despesa em aberto vai para UM boleto: o já gravado (se ainda pendente) ou o 1º boleto pendente com competência >= a dela
@@ -58,7 +61,7 @@ export default function AsaasAjustes() {
     for (const d of dados.des) {
       let alvo: string | undefined
       if (d.asaas_boleto_id) { if (pendIds.has(d.asaas_boleto_id)) alvo = d.asaas_boleto_id; else continue }  // já cobrada num boleto (pago/vencido)
-      else if (d.competencia >= desde) alvo = pend.filter(x => x.c.id === d.cliente_id && compDoVenc(x.p.vencimento) >= d.competencia)
+      else if (d.competencia >= desde) alvo = pend.filter(x => x.c.id === pag(d.cliente_id) && compDoVenc(x.p.vencimento) >= d.competencia)
         .sort((a, b) => a.p.vencimento.localeCompare(b.p.vencimento))[0]?.p.id
       if (!alvo) continue
       despesasDo.set(alvo, [...(despesasDo.get(alvo) || []), d])
@@ -67,15 +70,19 @@ export default function AsaasAjustes() {
     const propostas: Proposta[] = []
     for (const { p, c } of pend) {
       const C = compDoVenc(p.vencimento)
-      const h = dados.hon.find(x => x.cliente_id === c.id && x.competencia === C)
+      const hons = dados.hon.filter(x => pag(x.cliente_id) === c.id && x.competencia === C).sort((a, b) => (a.cliente_id === c.id ? 0 : 1) - (b.cliente_id === c.id ? 0 : 1))
+      const h = hons[0]
       const extras = despesasDo.get(p.id) || []
       const avisos: string[] = []
       const itens: Item[] = []
       const gerada = C <= compParaIso(config.competencia_atual)
       if (h) {
-        if (h.valor_pago_acumulado > 0 || h.status === 'Pago') avisos.push(`honorário ${comp(C)} já tem baixa de ${moeda(h.valor_pago_acumulado)} no Siscon`)
-        const v = h.status === 'Pago' ? 0 : r2(Math.max(0, h.valor_original - h.valor_pago_acumulado - h.desconto))
-        if (v > 0) itens.push({ texto: 'Honorários Mensais', valor: v })
+        for (const x of hons) {
+          const quem = x.cliente_id === c.id ? '' : ` (${nomeCurto(x.cliente_id)})`
+          if (x.valor_pago_acumulado > 0 || x.status === 'Pago') avisos.push(`honorário ${comp(C)}${quem} já tem baixa de ${moeda(x.valor_pago_acumulado)} no Siscon`)
+          const v = x.status === 'Pago' ? 0 : r2(Math.max(0, x.valor_original - x.valor_pago_acumulado - x.desconto))
+          if (v > 0) itens.push({ texto: 'Honorários Mensais' + quem, valor: v })
+        }
       } else if (!gerada) {
         // competência ainda não gerada no Siscon: mantém a base da assinatura (honorário + fixas) e só acrescenta as despesas lançadas
         if (!extras.length) continue
@@ -84,7 +91,7 @@ export default function AsaasAjustes() {
       }
       if (!itens.length && !extras.length) continue
       for (const d of extras.sort((a, b) => a.competencia.localeCompare(b.competencia) || a.descricao.localeCompare(b.descricao)))
-        itens.push({ texto: d.competencia < C ? `${d.descricao} (${comp(d.competencia)})` : d.descricao, valor: r2(d.saldo), despesa: d.id })
+        itens.push({ texto: (d.competencia < C ? `${d.descricao} (${comp(d.competencia)})` : d.descricao) + (d.cliente_id !== c.id ? ` - ${nomeCurto(d.cliente_id)}` : ''), valor: r2(d.saldo), despesa: d.id })
       const novo = r2(itens.reduce((s, i) => s + i.valor, 0))
       // Descrição: o Asaas já imprime a descrição da ASSINATURA no boleto (ex.: "Honorários Mensais").
       // Por isso o Siscon manda só as despesas extras (uma linha por item, com valor), sem repetir o honorário
@@ -105,8 +112,9 @@ export default function AsaasAjustes() {
     // assinaturas: valor esperado = honorário (salário vigente × %) + despesas fixas ativas
     const sm = salarioPara(dados.sal, compParaIso(config.competencia_atual), Number(config.salario_minimo))
     const assinaturas = dados.assinaturas.map(s => ({ s, c: acha(s.cliente_asaas, s.cpfCnpj) })).filter(x => x.c).map(({ s, c }) => {
-      const fixas = dados.fixas.filter(f => f.cliente_id === c!.id && f.ativa).reduce((t, f) => t + Number(f.valor), 0)
-      const esperado = r2(Math.round(sm * c!.percentual_honorario) / 100 + fixas)
+      const grupo = dados.cli.filter(x => x.id === c!.id || x.boleto_cliente_id === c!.id)
+      const fixas = dados.fixas.filter(f => grupo.some(g => g.id === f.cliente_id) && f.ativa).reduce((t, f) => t + Number(f.valor), 0)
+      const esperado = r2(grupo.reduce((t, g) => t + Math.round(sm * g.percentual_honorario) / 100, 0) + fixas)
       return { s, c: c!, esperado, fixas }
     }).filter(x => Math.abs(x.esperado - x.s.valor) > 0.009 && x.c.status === 'Ativo' && x.esperado > 0)
     // mostra só os boletos que vencem no mês atual; os dos meses seguintes aparecem no mês do vencimento

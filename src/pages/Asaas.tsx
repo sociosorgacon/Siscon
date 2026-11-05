@@ -146,11 +146,14 @@ function Conferencia() {
     if (!dados) return null
     const sm = Number(config.salario_minimo) || 0
     const compAtualIso = config.competencia_atual ? compParaIso(config.competencia_atual) : '9999-12-01'
+    const grupo = (id: string) => dados.clientes.filter(x => x.id === id || x.boleto_cliente_id === id)
+    const ids = (id: string) => grupo(id).map(x => x.id)
     const acha = (idAsaas: string, cnpj: string) =>
       dados.clientes.find(c => c.asaas_customer_id === idAsaas) || dados.clientes.find(c => cnpj && dig(c.cnpj) === cnpj)
     const assinaturas = dados.assinaturas.map(s => {
       const c = acha(s.cliente_asaas, s.cpfCnpj)
-      const honorario = c ? r2(sm * c.percentual_honorario / 100) : null
+      // inclui quem é cobrado no mesmo boleto (boleto_cliente_id = este cliente), ex.: Samira no Laboratório Alfa
+      const honorario = c ? r2(grupo(c.id).reduce((t, x) => t + sm * x.percentual_honorario / 100, 0)) : null
       const diaAsaas = Number(s.proximo_vencimento?.slice(8, 10)) || null
       const problemas = !c ? ['Não encontrado no Siscon'] : [
         ...(Math.abs(s.valor - (honorario || 0)) > 0.009 ? ['Valor diferente'] : []),
@@ -164,8 +167,8 @@ function Conferencia() {
     const cobrancas = dados.cobrancas.map(p => {
       const c = acha(p.cliente_asaas, p.cpfCnpj)
       const compIso = compDoVenc(p.vencimento)
-      const siscon = c ? r2(dados.hon.filter(h => h.cliente_id === c.id && h.competencia === compIso).reduce((s, h) => s + h.saldo, 0)
-        + dados.des.filter(d => d.cliente_id === c.id && d.competencia === compIso).reduce((s, d) => s + d.saldo, 0)) : null
+      const siscon = c ? r2(dados.hon.filter(h => ids(c.id).includes(h.cliente_id) && h.competencia === compIso).reduce((s, h) => s + h.saldo, 0)
+        + dados.des.filter(d => ids(c.id).includes(d.cliente_id) && d.competencia === compIso).reduce((s, d) => s + d.saldo, 0)) : null
       const dif = siscon == null ? null : r2(p.valor - siscon)
       return { ...p, siscon_nome: c?.razao_social || '', comp: comp(compIso), siscon, dif,
         situacao: !c ? 'Não encontrado no Siscon'

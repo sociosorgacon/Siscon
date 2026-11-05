@@ -64,13 +64,13 @@ export default function Clientes() {
             </table>
           </div>}
       </Cartao>
-      {edit && <FormCliente cliente={edit} sm={sm} fechar={() => setEdit(null)}
+      {edit && <FormCliente cliente={edit} sm={sm} todos={dados || []} fechar={() => setEdit(null)}
         salvo={() => { setEdit(null); recarregar(); avisar('Cliente salvo.') }} />}
     </>
   )
 }
 
-function FormCliente({ cliente, sm, fechar, salvo }: { cliente: Partial<Cliente>; sm: number; fechar: () => void; salvo: () => void }) {
+function FormCliente({ cliente, sm, todos: todosClientes, fechar, salvo }: { cliente: Partial<Cliente>; sm: number; todos: Cliente[]; fechar: () => void; salvo: () => void }) {
   const avisar = useAviso()
   const [c, setC] = useState<Partial<Cliente>>(cliente)
   const [salvando, setSalvando] = useState(false)
@@ -139,6 +139,14 @@ function FormCliente({ cliente, sm, fechar, salvo }: { cliente: Partial<Cliente>
           </label>
           <label className="col-span-6 flex items-center gap-2 text-sm">
             <input type="checkbox" checked={c.gera_fechamento !== false} onChange={e => set('gera_fechamento', e.target.checked)} /> Gera Fechamento de Escrita (honorário de fim de ano, botão em Honorários)
+          </label>
+          <label className="col-span-6 text-sm">
+            <span className="rotulo">Boleto do Asaas junto com (cliente pagador)</span>
+            <select className="campo" value={c.boleto_cliente_id || ''} onChange={e => set('boleto_cliente_id', e.target.value || null)}>
+              <option value="">— boleto próprio ou sem boleto —</option>
+              {todosClientes.filter(x => x.id !== c.id && x.status === 'Ativo' && !x.boleto_cliente_id).map(x => <option key={x.id} value={x.id}>{x.razao_social}</option>)}
+            </select>
+            <span className="mt-0.5 block text-xs text-slate-500">Ex.: doméstica cobrada no boleto da empresa. A baixa e os ajustes do boleto do pagador passam a incluir os débitos deste cliente.</span>
           </label>
         </div>
 

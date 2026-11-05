@@ -127,9 +127,12 @@ export default function AsaasExtrato() {
       todos<Despesa>((a, b) => supabase.from('v_despesas').select('*').gt('saldo', 0).range(a, b)),
       todos<{ asaas_fatura: string }>((a, b) => supabase.from('recibos').select('asaas_fatura').eq('cancelado', false).not('asaas_fatura', 'is', null).range(a, b)),
     ])
+    // cliente cobrado no boleto de outro (boleto_cliente_id): os débitos dele entram no recebimento do pagador
+    const pagador = new Map(clientes.filter(c => c.boleto_cliente_id).map(c => [c.id, c.boleto_cliente_id!]))
+    const pag = (id: string) => pagador.get(id) || id
     const abertos: Aberto[] = [
-      ...hon.map(h => ({ tipo: 'honorario' as const, id: h.id, cid: h.cliente_id, comp: h.competencia, data: h.vencimento, saldo: h.saldo, juros: h.juros_calc || 0, desc: 'Honorário' })),
-      ...des.map(d => ({ tipo: 'despesa' as const, id: d.id, cid: d.cliente_id, comp: d.competencia, data: d.data, saldo: d.saldo, juros: 0, desc: d.descricao })),
+      ...hon.map(h => ({ tipo: 'honorario' as const, id: h.id, cid: pag(h.cliente_id), comp: h.competencia, data: h.vencimento, saldo: h.saldo, juros: h.juros_calc || 0, desc: 'Honorário' })),
+      ...des.map(d => ({ tipo: 'despesa' as const, id: d.id, cid: pag(d.cliente_id), comp: d.competencia, data: d.data, saldo: d.saldo, juros: 0, desc: d.descricao })),
     ].sort((a, b) => a.comp.localeCompare(b.comp) || (a.tipo === b.tipo ? a.data.localeCompare(b.data) : a.tipo === 'honorario' ? -1 : 1))
     return { clientes, abertos, baixadas: new Set(rec.map(r => r.asaas_fatura)) }
   }
