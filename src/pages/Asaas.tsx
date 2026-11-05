@@ -133,14 +133,15 @@ function Conferencia() {
   const { config } = useApp()
   const avisar = useAviso()
   const { dados, erro, recarregar } = useDados(async () => {
-    const [asaas, saldo, clientes, hon, des] = await Promise.all([
+    const [asaas, saldo, clientes, hon, des, fixas] = await Promise.all([
       chamarAsaas<{ assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[] }>('conferencia'),
       chamarAsaas<{ saldo: number }>('saldo'),
       todos<Cliente>((a, b) => supabase.from('clientes').select('*').range(a, b)),
       todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').range(a, b)),
       todos<Despesa>((a, b) => supabase.from('v_despesas').select('*').range(a, b)),
+      todos<{ cliente_id: string; valor: number; ativa: boolean }>((a, b) => supabase.from('despesas_fixas').select('cliente_id, valor, ativa').range(a, b)),
     ])
-    return { ...asaas, saldo: saldo.saldo, clientes, hon, des }
+    return { ...asaas, saldo: saldo.saldo, clientes, hon, des, fixas }
   })
 
   const r = useMemo(() => {
@@ -154,11 +155,15 @@ function Conferencia() {
     const assinaturas = dados.assinaturas.map(s => {
       const c = acha(s.cliente_asaas, s.cpfCnpj)
       // inclui quem é cobrado no mesmo boleto (boleto_cliente_id = este cliente), ex.: Samira no Laboratório Alfa
-      const honorario = c ? r2(grupo(c.id).reduce((t, x) => t + sm * x.percentual_honorario / 100, 0)) : null
+      // valor esperado da assinatura = honorário + despesas fixas ativas (ex.: NFStock da El-Shaday; Aroma Coffee só tem a fixa)
+      const fixas = c ? dados.fixas.filter(f => f.ativa && ids(c.id).includes(f.cliente_id)).reduce((t, f) => t + Number(f.valor), 0) : 0
+      const honorario = c ? r2(grupo(c.id).reduce((t, x) => t + sm * x.percentual_honorario / 100, 0) + fixas) : null
       const diaAsaas = Number(s.proximo_vencimento?.slice(8, 10)) || null
+      // dia 31 (= último dia do mês) vira 30/28/29 no Asaas conforme o mês: não é diferença
+      const ultimoDia = s.proximo_vencimento ? new Date(Number(s.proximo_vencimento.slice(0, 4)), Number(s.proximo_vencimento.slice(5, 7)), 0).getDate() : 31
       const problemas = !c ? ['Não encontrado no Siscon'] : [
         ...(Math.abs(s.valor - (honorario || 0)) > 0.009 ? ['Valor diferente'] : []),
-        ...(diaAsaas !== c.dia_vencimento ? ['Vencimento diferente'] : []),
+        ...(diaAsaas !== Math.min(c.dia_vencimento, ultimoDia) ? ['Vencimento diferente'] : []),
         ...(c.status !== 'Ativo' ? ['Cliente inativo no Siscon'] : []),
       ]
       return { ...s, cliente: c, siscon: c?.razao_social || '', honorario, dif: honorario == null ? null : r2(s.valor - honorario),
@@ -189,7 +194,7 @@ function Conferencia() {
         { nome: 'Assinaturas', titulo: 'Assinaturas ativas no Asaas × cadastro do Siscon', total: ['valor', 'honorario', 'dif'],
           colunas: [{ titulo: 'Cliente (Asaas)', chave: 'nome', largura: 42 }, { titulo: 'CNPJ/CPF', chave: 'doc', largura: 20 },
             { titulo: 'Cliente (Siscon)', chave: 'siscon', largura: 42 }, { titulo: 'Valor Asaas', chave: 'valor', tipo: 'moeda' },
-            { titulo: 'Honorário Siscon', chave: 'honorario', tipo: 'moeda', largura: 16 }, { titulo: 'Diferença', chave: 'dif', tipo: 'moeda' },
+            { titulo: 'Siscon (honorário + fixas)', chave: 'honorario', tipo: 'moeda', largura: 16 }, { titulo: 'Diferença', chave: 'dif', tipo: 'moeda' },
             { titulo: 'Dia venc. Asaas', chave: 'diaAsaas', tipo: 'numero', largura: 14 }, { titulo: 'Dia venc. Siscon', chave: 'diaSiscon', tipo: 'numero', largura: 15 },
             { titulo: 'Próximo venc.', chave: 'proximo_vencimento', tipo: 'data', largura: 13 }, { titulo: 'Situação', chave: 'situacao', largura: 40 }],
           linhas: r.assinaturas.map(a => ({ ...a, doc: doc(a.cpfCnpj) })) },
@@ -225,7 +230,7 @@ function Conferencia() {
         <Cartao titulo="Assinaturas ativas no Asaas" className="mt-6">
           {r.assinaturas.length === 0 ? <Vazio texto="Nenhuma assinatura ativa." /> :
             <div className="overflow-x-auto"><table className="tabela">
-              <thead><tr><th>Cliente</th><th className="text-right">Valor Asaas</th><th className="text-right">Honorário Siscon</th><th className="text-right">Diferença</th><th>Dia venc.</th><th>Situação</th></tr></thead>
+              <thead><tr><th>Cliente</th><th className="text-right">Valor Asaas</th><th className="text-right">Siscon (honorário + fixas)</th><th className="text-right">Diferença</th><th>Dia venc.</th><th>Situação</th></tr></thead>
               <tbody>{r.assinaturas.map(a => <tr key={a.id}>
                 <td className="max-w-sm truncate" title={`${a.nome} · ${doc(a.cpfCnpj)}`}>{a.nome}<span className="block text-xs text-slate-400">{doc(a.cpfCnpj)}</span></td>
                 <td className="num text-right">{moeda(a.valor)}</td>
