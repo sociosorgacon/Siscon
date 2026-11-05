@@ -405,7 +405,7 @@ function ImpressaoDebitos({ grupos, titulo, escritorio, qr, chave }: { grupos: G
   const totHon = grupos.reduce((s, g) => s + g.totHon, 0), totDes = grupos.reduce((s, g) => s + g.totDes, 0)
   const agora = new Date()
   return (
-    <div className="hidden text-[8pt] leading-[1.2] text-slate-900 print:block">
+    <div className="hidden text-[8.5pt] leading-[1.35] text-slate-900 print:block [&_tbody_td]:py-[2px]">
       <header className="mb-2 flex items-center gap-4 border-b-2 border-[#204879] pb-2">
         <img src="/logo.png" alt="" className="h-9" />
         <div className="flex-1">
@@ -420,9 +420,9 @@ function ImpressaoDebitos({ grupos, titulo, escritorio, qr, chave }: { grupos: G
           <th className="py-0.5 font-semibold">Descrição</th><th className="font-semibold">Compet.</th>
           <th className="text-right font-semibold">Valor</th><th className="text-right font-semibold">Pago</th><th className="text-right font-semibold">Saldo</th><th className="pl-2 font-semibold">Situação</th></tr></thead>
         {grupos.map(g => (
-          <tbody key={g.id} className="break-inside-avoid">
-            <tr className="bg-slate-100 [print-color-adjust:exact]"><td colSpan={4} className="px-1 pb-0.5 pt-1 font-bold">{g.cliente} <span className="font-normal text-slate-500">{g.cnpj ? doc(g.cnpj) : ''}</span></td>
-              <td className="num px-1 pt-1 text-right font-bold">{moeda(g.total)}</td><td /></tr>
+          <tbody key={g.id} className="break-inside-avoid border-t-[6px] border-white">
+            <tr className="bg-slate-100 [print-color-adjust:exact]"><td colSpan={4} className="px-1.5 !py-1 font-bold">{g.cliente} <span className="font-normal text-slate-500">{g.cnpj ? doc(g.cnpj) : ''}</span></td>
+              <td className="num px-1.5 !py-1 text-right font-bold">{moeda(g.total)}</td><td /></tr>
             {g.hon.map(h => <tr key={h.id} className="border-b border-slate-100">
               <td className="pl-3">Honorários</td><td className="num">{comp(h.competencia)}</td>
               <td className="num text-right">{moeda(h.valor_original + h.juros_calc)}</td><td className="num text-right">{h.valor_pago_acumulado ? moeda(h.valor_pago_acumulado) : '—'}</td>
