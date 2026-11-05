@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, ok, todos, type Cliente, type Honorario, type Despesa } from '../lib/supabase'
 import { useApp, useDados } from '../lib/app'
 import { chamarAsaas, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/asaas'
-import AsaasExtrato from './AsaasExtrato'
 import AsaasAjustes, { limparCacheAjustes } from './AsaasAjustes'
 import { moeda, data, comp, doc, normaliza, compParaIso } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
@@ -27,17 +26,17 @@ const COR_STATUS: Record<Evento['status'], string> = { processado: 'bg-emerald-5
 const ROTULO_STATUS: Record<Evento['status'], string> = { processado: 'Baixado', pendente: 'Conferir', erro: 'Erro', ignorado: 'Ignorado' }
 
 export default function Asaas() {
-  const [aba, setAba] = useState<'baixas' | 'extrato' | 'conferencia' | 'ajustes'>('baixas')
+  const [aba, setAba] = useState<'baixas' | 'conferencia' | 'ajustes'>('baixas')
   useEffect(() => limparCacheAjustes, [])   // ao sair da página, a lista de ajustes volta a consultar o Asaas
   return (
     <>
-      <Cabecalho logo={<LogoAsaas className="h-7 w-7" />} titulo="Integração Asaas" subtitulo="Baixa automática dos boletos pagos, importação do extrato, conferência e ajuste dos boletos" />
+      <Cabecalho logo={<LogoAsaas className="h-7 w-7" />} titulo="Integração Asaas" subtitulo="Baixa automática dos boletos pagos, conferência e ajuste dos boletos" />
       <div className="mb-5 inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
-        {([['baixas', 'Baixas automáticas', 'ok'], ['extrato', 'Importar extrato (OFX)', 'baixar'], ['conferencia', 'Conferência de assinaturas', 'relatorios'], ['ajustes', 'Ajustes de boletos', 'editar']] as const).map(([k, t, ic]) => (
+        {([['baixas', 'Baixas automáticas', 'ok'], ['conferencia', 'Conferência de assinaturas', 'relatorios'], ['ajustes', 'Ajustes de boletos', 'editar']] as const).map(([k, t, ic]) => (
           <button key={k} onClick={() => setAba(k)} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${aba === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
             <Icone nome={ic} className={`h-4 w-4 ${aba === k ? 'text-blue-600' : ''}`} />{t}</button>))}
       </div>
-      {aba === 'baixas' ? <Baixas /> : aba === 'extrato' ? <AsaasExtrato /> : aba === 'ajustes' ? <AsaasAjustes /> : <Conferencia />}
+      {aba === 'baixas' ? <Baixas /> : aba === 'ajustes' ? <AsaasAjustes /> : <Conferencia />}
     </>
   )
 }
@@ -211,7 +210,7 @@ function Conferencia() {
       </div>
       {erro ? <Aviso icone="alerta" titulo="Não foi possível consultar o Asaas agora"
           texto={/not_allowed_ip|403/.test(erro)
-            ? 'O Asaas bloqueia consultas vindas do servidor do Siscon (bloqueio por IP na borda deles). Saldo e conferência voltam a funcionar quando o IP fixo for configurado. A baixa automática e a importação do extrato NÃO dependem disso.'
+            ? 'O Asaas bloqueia consultas vindas do servidor do Siscon (bloqueio por IP na borda deles). Saldo e conferência voltam a funcionar quando o IP fixo for configurado. A baixa automática NÃO depende disso.'
             : 'Tente "Atualizar" daqui a pouco. Se continuar, me envie a mensagem abaixo.'}
           detalhe={erro} />
         : !r || !dados ? <Carregando /> : <>
