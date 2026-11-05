@@ -42,7 +42,7 @@ async function origem() {
 
 async function asaasGet(caminho: string) {
   const r = await fetch(ASAAS + caminho, {
-    headers: { access_token: CHAVE, 'User-Agent': 'Siscon-Orgacon', 'Content-Type': 'application/json', ...(PONTE ? { 'X-Ponte-Token': PONTE } : {}) },
+    headers: { access_token: CHAVE, 'User-Agent': 'Siscon-Orgacon', 'Content-Type': 'application/json', ...(PONTE ? { 'X-Ponte-Token': PONTE, 'X-Asaas-Key': CHAVE } : {}) },
   })
   const txt = await r.text()
   if (r.status === 403) throw new Error(`Asaas respondeu 403: ${txt.slice(0, 300)} — ${await origem()}`)

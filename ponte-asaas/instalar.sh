@@ -27,6 +27,9 @@ $HOST {
         reverse_proxy https://api.asaas.com {
             header_up Host {upstream_hostport}
             header_up -X-Ponte-Token
+            # a chave chega em X-Asaas-Key (o cabeçalho access_token, com "_", não passa pela ponte)
+            header_up access_token {http.request.header.X-Asaas-Key}
+            header_up -X-Asaas-Key
         }
     }
     respond "Acesso negado" 403
