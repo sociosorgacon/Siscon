@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Honorario } from '../lib/supabase'
-import { useApp, useDados } from '../lib/app'
+import { useApp, useDados, salarioPara, type SalarioMinimo } from '../lib/app'
 import { moeda, data, comp, compParaIso, ultimasCompetencias, normaliza, doc } from '../lib/format'
 import { Avatar, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone } from '../components/icones'
@@ -156,6 +156,7 @@ function NovoHonorario({ competencia, fechar, salvo }: { competencia: string; fe
   const avisar = useAviso()
   const { config } = useApp()
   const sm = Number(config.salario_minimo)
+  const { dados: salarios } = useDados(async () => ok(await supabase.from('salarios_minimos').select('vigencia, valor')) as SalarioMinimo[])
   const { dados: clientes } = useDados(() => todos<Cliente>((a, b) => supabase.from('clientes').select('*').eq('status', 'Ativo').order('razao_social').range(a, b)))
   const [sel, setSel] = useState<string[]>([])
   const [filtro, setFiltro] = useState('')
@@ -164,6 +165,7 @@ function NovoHonorario({ competencia, fechar, salvo }: { competencia: string; fe
   const lista = (clientes || []).filter(c => !filtro || normaliza(c.razao_social).includes(normaliza(filtro)))
   const listaComps = comps.split(/[\s,;]+/).filter(Boolean)
   const compsValidas = listaComps.every(c => /^\d{2}\/\d{4}$/.test(c))
+  const smPrevia = compsValidas && listaComps.length ? salarioPara(salarios || [], compParaIso(listaComps[0]), sm) : sm
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault()
@@ -178,7 +180,7 @@ function NovoHonorario({ competencia, fechar, salvo }: { competencia: string; fe
         const prox = new Date(a, m, 1)
         const ultimo = new Date(prox.getFullYear(), prox.getMonth() + 1, 0).getDate()
         const venc = `${prox.getFullYear()}-${String(prox.getMonth() + 1).padStart(2, '0')}-${String(Math.min(cli.dia_vencimento, ultimo)).padStart(2, '0')}`
-        const v = personalizado ? vp : Math.round(sm * cli.percentual_honorario) / 100
+        const v = personalizado ? vp : Math.round(salarioPara(salarios || [], iso, sm) * cli.percentual_honorario) / 100
         return { cliente_id: id, competencia: iso, juros_desde: iso, vencimento: venc, valor_original: v, valor_atualizado: v, status: 'Pendente' }
       })
     })
@@ -199,7 +201,7 @@ function NovoHonorario({ competencia, fechar, salvo }: { competencia: string; fe
             {lista.map(c => (
               <label key={c.id} className="flex items-center justify-between gap-2 px-3 py-1 text-sm hover:bg-slate-50">
                 <span className="flex items-center gap-2"><input type="checkbox" checked={sel.includes(c.id)} onChange={e => setSel(s => e.target.checked ? [...s, c.id] : s.filter(x => x !== c.id))} />{c.razao_social}</span>
-                <span className="num text-xs text-slate-400">{moeda(sm * c.percentual_honorario / 100)}</span>
+                <span className="num text-xs text-slate-400">{moeda(smPrevia * c.percentual_honorario / 100)}</span>
               </label>))}
           </div>
         </div>

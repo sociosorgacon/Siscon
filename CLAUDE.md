@@ -13,7 +13,7 @@ Migrado do Base44 (siscon.base44.app) em 30–31/10/2026. Usuários: o dono e os
 - URL e chave *publishable* do Supabase ficam em `src/lib/supabase.ts` (são públicas por natureza). **Nunca** colocar a secret/service_role key no código.
 
 ## Banco de dados (pasta `supabase/`)
-Ordem de criação: `schema.sql` → importação → `002_regras.sql` → `003_ajustes.sql` → `004_recibo_unico.sql` (aplicado em 31/10/2026) → `005_asaas_baixa.sql` → `006_asaas_extrato.sql`.
+Ordem de criação: `schema.sql` → importação → `002_regras.sql` → `003_ajustes.sql` → `004_recibo_unico.sql` (aplicado em 31/10/2026) → `005_asaas_baixa.sql` → `006_asaas_extrato.sql` → `007_salario_vigencia.sql`.
 - Mudanças de banco **não** são aplicadas pelo push: gerar um script SQL **idempotente** e o usuário roda no Supabase → SQL Editor.
 - Regras de negócio ficam no banco (views e funções), não no front:
   - `v_honorarios` / `v_despesas`: juros, saldo, situação, `em_atraso`.
@@ -23,7 +23,7 @@ Ordem de criação: `schema.sql` → importação → `002_regras.sql` → `003_
 - `dados/` (backup do Base44) e qualquer SQL com dados de clientes **não vão para o Git** (`.gitignore`).
 
 ## Regras de negócio (definidas pelo usuário — seguir à risca)
-- **Honorário** = salário mínimo (config) × % do cliente. Vencimento = dia do cliente no **mês seguinte** à competência.
+- **Honorário** = salário mínimo **vigente na competência** × % do cliente (tabela `salarios_minimos`, função `salario_vigente(comp)`; salário novo com vigência 01/01/2027 vale da competência 01/2027 em diante — a 12/2026, gerada em janeiro, usa o anterior; Configurações grava o histórico ao salvar salário + vigência). Honorário lançado guarda o valor; juros sempre sobre esse valor original. Vencimento = dia do cliente no **mês seguinte** à competência.
 - **Juros:** fixos em **1,55% a.m.**, simples, sobre o valor original, por mês de competência em atraso. Só para clientes com **multa por atraso** (padrão = sim). Entram quando a competência avança. Juros importados do Base44 foram preservados via coluna `juros_desde`.
 - **Atrasado** = competência **anterior** à competência atual e não quitado. Competência atual ou futura é sempre Pendente.
 - **Baixas:** com recibo (numerado, sequência continua do Base44: próximo foi o 158) ou **sem recibo** (ex.: boleto pago — não gera recibo nem número). Baixa parcial, desconto e **baixa integral** (quita com a diferença registrada como desconto). Valor recebido distribuído do item mais antigo.

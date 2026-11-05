@@ -64,3 +64,11 @@ export const escritorioDe = (c: Config) => ({
 export const pixDe = (c: Config) => ({
   chave: c.pix_chave || c.escritorio_cnpj, nome: c.escritorio_nome, cidade: (c.escritorio_cidade || 'Iuna').split('/')[0],
 })
+
+/** Salário mínimo vigente numa competência (AAAA-MM-01), pela tabela salarios_minimos (igual a salario_vigente() no banco) */
+export type SalarioMinimo = { vigencia: string; valor: number }
+export function salarioPara(lista: SalarioMinimo[], competenciaIso: string, padrao: number) {
+  const ord = [...lista].sort((a, b) => a.vigencia.localeCompare(b.vigencia))
+  const vig = ord.filter(s => s.vigencia <= competenciaIso.slice(0, 10)).pop() || ord[0]
+  return vig ? Number(vig.valor) : padrao
+}

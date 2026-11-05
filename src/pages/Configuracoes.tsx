@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase, ok } from '../lib/supabase'
-import { useApp, descricoesPadrao, type Config } from '../lib/app'
+import { useApp, useDados, descricoesPadrao, type Config, type SalarioMinimo } from '../lib/app'
 import { baixarBackup } from '../lib/backup'
-import { moeda } from '../lib/format'
+import { moeda, comp } from '../lib/format'
 import { Botao, Cabecalho, Campo, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
 
@@ -21,6 +21,8 @@ export default function Configuracoes() {
   const [f, setF] = useState<Config>(config)
   const [salvando, setSalvando] = useState(false)
   const [novaDesc, setNovaDesc] = useState('')
+  const { dados: salarios, recarregar: recarregarSalarios } = useDados(async () =>
+    ok(await supabase.from('salarios_minimos').select('vigencia, valor').order('vigencia', { ascending: false })) as SalarioMinimo[])
   const listaDesc = descricoesPadrao(f)
   const mudarDesc = (l: string[]) => setF({ ...f, descricoes_despesas: l.join('\n') })
   function adicionarDesc() {
@@ -38,11 +40,21 @@ export default function Configuracoes() {
     if (!/^\d{2}\/\d{4}$/.test(f.competencia_atual)) return avisar('Competência deve estar no formato MM/AAAA.', 'erro')
     if (f.competencia_atual !== config.competencia_atual &&
       !confirm(`Alterar a competência atual de ${config.competencia_atual} para ${f.competencia_atual} muda o cálculo de juros de todos os atrasados. Para a virada normal do mês, use "Avançar competência" em Honorários. Continuar?`)) return
+    const smNovo = Number(String(f.salario_minimo).replace(',', '.'))
+    const mudouSal = smNovo !== Number(config.salario_minimo) || f.vigencia_salario !== config.vigencia_salario
+    const vig = /^\d{4}-\d{2}/.test(f.vigencia_salario) ? `${f.vigencia_salario.slice(0, 7)}-01` : ''
+    if (mudouSal) {
+      if (!(smNovo > 0)) return avisar('Informe o salário mínimo.', 'erro')
+      if (!vig) return avisar('Informe a data de vigência do salário.', 'erro')
+      const existente = (salarios || []).find(s => s.vigencia === vig)
+      if (existente && Number(existente.valor) !== smNovo && !confirm(`Já existe salário de ${moeda(Number(existente.valor))} com vigência ${comp(vig)}. Substituir por ${moeda(smNovo)}?\n\nSe é um salário NOVO, cancele e informe a nova data de vigência (ex.: 01/01 do ano novo) para manter o anterior nas competências antigas.`)) return
+    }
     setSalvando(true)
     try {
+      if (mudouSal) ok(await supabase.from('salarios_minimos').upsert({ vigencia: vig, valor: smNovo }, { onConflict: 'vigencia' }))
       const linhas = (Object.keys(descricoes) as (keyof Config)[]).map(k => ({ chave: k, valor: String(f[k] ?? '').replace(',', k === 'taxa_juros' || k === 'salario_minimo' ? '.' : ','), descricao: descricoes[k] }))
       ok(await supabase.from('configuracoes').upsert(linhas, { onConflict: 'chave' }))
-      await recarregarConfig(); avisar('Configurações salvas.')
+      await recarregarConfig(); recarregarSalarios(); avisar('Configurações salvas.')
     } catch (err) { avisar((err as Error).message, 'erro') } finally { setSalvando(false) }
   }
 
@@ -69,7 +81,16 @@ export default function Configuracoes() {
           <div className="mt-4 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-center">
             {[10, 40, 80].map(p => <div key={p}><p className="text-[11px] text-slate-500">Cliente com {p}%</p><p className="num text-sm font-semibold text-slate-800">{moeda(sm * p / 100)}</p></div>)}
           </div>
-          <p className="mt-3 text-xs text-slate-500">Novo salário mínimo vale para os honorários gerados a partir de agora; os já lançados mantêm o valor. Juros só para clientes com multa por atraso, contados a cada virada de competência. Para a virada normal do mês, use "Avançar competência" em Honorários.</p>
+          <div className="mt-4">
+            <p className="rotulo">Histórico do salário mínimo</p>
+            <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
+              {(salarios || []).length === 0 && <p className="px-3 py-2 text-slate-400">Nenhum salário registrado.</p>}
+              {(salarios || []).map((s, i) => <div key={s.vigencia} className="flex items-center justify-between px-3 py-1.5">
+                <span className="text-slate-600">Competência {comp(s.vigencia)} em diante{i === 0 && <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">atual</span>}</span>
+                <span className="num font-medium text-slate-800">{moeda(Number(s.valor))}</span></div>)}
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">Cada competência usa o salário vigente nela: salário novo com vigência 01/01/2027 vale da competência 01/2027 em diante; a 12/2026 (gerada em janeiro) continua com o anterior. Para salário novo, informe o valor <b>e</b> a nova vigência. Honorários já lançados mantêm o valor. Juros só para clientes com multa por atraso, contados a cada virada de competência.</p>
         </Secao>
 
         <Secao icone="recibos" cor="from-emerald-600 to-emerald-500" titulo="Dados do escritório" descricao="Aparecem no recibo, no extrato de débitos e no Pix">
