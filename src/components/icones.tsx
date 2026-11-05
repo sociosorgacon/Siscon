@@ -20,6 +20,7 @@ const caminhos = {
   busca: <><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>,
   menu: <><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></>,
   mais: <><path d="M5 12h14" /><path d="M12 5v14" /></>,
+  impressora: <><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect width="12" height="8" x="6" y="14" /></>,
   fechar: <><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>,
 }
 
