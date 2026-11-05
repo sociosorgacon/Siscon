@@ -46,7 +46,7 @@ async function asaasGet(caminho: string) {
   })
   const txt = await r.text()
   if (r.status === 403) throw new Error(`Asaas respondeu 403: ${txt.slice(0, 300)} — ${await origem()}`)
-  if (!r.ok) throw new Error(`Asaas respondeu ${r.status}: ${txt.slice(0, 300)}`)
+  if (!r.ok) throw new Error(`Asaas respondeu ${r.status}: ${txt.slice(0, 300)} — ${await origem()}`)
   return JSON.parse(txt)
 }
 
