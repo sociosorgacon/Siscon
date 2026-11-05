@@ -3,7 +3,7 @@ import { supabase, ok, todos, type Cliente, type Honorario, type Despesa } from 
 import { useApp, useDados } from '../lib/app'
 import { chamarAsaas, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/asaas'
 import AsaasExtrato from './AsaasExtrato'
-import { moeda, data, comp, doc, normaliza } from '../lib/format'
+import { moeda, data, comp, doc, normaliza, compParaIso } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
 import { Avatar, Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
@@ -144,6 +144,7 @@ function Conferencia() {
   const r = useMemo(() => {
     if (!dados) return null
     const sm = Number(config.salario_minimo) || 0
+    const compAtualIso = config.competencia_atual ? compParaIso(config.competencia_atual) : '9999-12-01'
     const acha = (idAsaas: string, cnpj: string) =>
       dados.clientes.find(c => c.asaas_customer_id === idAsaas) || dados.clientes.find(c => cnpj && dig(c.cnpj) === cnpj)
     const assinaturas = dados.assinaturas.map(s => {
@@ -166,13 +167,15 @@ function Conferencia() {
         + dados.des.filter(d => d.cliente_id === c.id && d.competencia === compIso).reduce((s, d) => s + d.saldo, 0)) : null
       const dif = siscon == null ? null : r2(p.valor - siscon)
       return { ...p, siscon_nome: c?.razao_social || '', comp: comp(compIso), siscon, dif,
-        situacao: !c ? 'Não encontrado no Siscon' : Math.abs(dif || 0) > 0.009 ? 'Valor diferente' : 'OK',
+        situacao: !c ? 'Não encontrado no Siscon'
+          : compIso > compAtualIso && siscon === 0 ? 'Competência ainda não gerada'   // boleto criado antes de o Siscon gerar o honorário
+          : Math.abs(dif || 0) > 0.009 ? 'Valor diferente' : 'OK',
         statusPt: p.status === 'OVERDUE' ? 'Vencido' : 'Pendente' }
     }).sort((a, b) => a.vencimento.localeCompare(b.vencimento) || a.nome.localeCompare(b.nome))
 
     return { assinaturas, cobrancas, comProblema: assinaturas.filter(a => a.situacao !== 'OK').length,
-      cobDif: cobrancas.filter(c => c.situacao !== 'OK').length }
-  }, [dados, config.salario_minimo])
+      cobDif: cobrancas.filter(c => c.situacao !== 'OK' && c.situacao !== 'Competência ainda não gerada').length }
+  }, [dados, config.salario_minimo, config.competencia_atual])
 
   async function exportar() {
     if (!r) return
@@ -239,7 +242,7 @@ function Conferencia() {
                 <td><Selo texto={c.statusPt === 'Vencido' ? 'Atrasado' : 'Pendente'} /></td>
                 <td className="num text-right">{moeda(c.valor)}</td>
                 <td className="num text-right">{c.siscon == null ? '—' : moeda(c.siscon)}</td>
-                <td className={`num text-right ${c.dif ? 'font-medium text-red-700' : 'text-slate-400'}`}>{c.dif == null ? <span className="text-xs text-amber-700">sem cliente</span> : moeda(c.dif)}</td>
+                <td className={`num text-right ${c.dif && c.situacao !== 'Competência ainda não gerada' ? 'font-medium text-red-700' : 'text-slate-400'}`}>{c.dif == null ? <span className="text-xs text-amber-700">sem cliente</span> : c.situacao === 'Competência ainda não gerada' ? <span className="text-xs">comp. ainda não gerada</span> : moeda(c.dif)}</td>
                 <td className="pr-5 text-right">{c.link && <a className="text-sm text-marca-700 hover:underline" href={c.link} target="_blank" rel="noreferrer">Boleto</a>}</td>
               </tr>)}</tbody>
             </table></div>}
