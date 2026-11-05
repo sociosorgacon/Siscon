@@ -23,7 +23,6 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 const dig = (s: string | null | undefined) => (s || '').replace(/\D/g, '')
 const compDoVenc = (venc: string) => { const [a, m] = venc.split('-').map(Number); return m === 1 ? `${a - 1}-12-01` : `${a}-${String(m - 1).padStart(2, '0')}-01` }
 const linha = (texto: string, valor: number) => `${texto} - ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const normDesc = (s: string) => s.split('\n').map(l => l.trim()).filter(Boolean).join('\n')
 
 export default function AsaasAjustes() {
   const avisar = useAviso()
@@ -81,20 +80,22 @@ export default function AsaasAjustes() {
         // competência ainda não gerada no Siscon: mantém a base da assinatura (honorário + fixas) e só acrescenta as despesas lançadas
         if (!extras.length) continue
         const base = r2(p.valor - extras.filter(d => d.asaas_boleto_id === p.id).reduce((s, d) => s + d.saldo, 0))
-        const t = normDesc(assinaturaDe(p.assinatura)?.descricao || 'Honorários Mensais')
-        itens.push({ texto: /\d,\d{2}/.test(t) ? t : linha(t, base), valor: base })   // base sem valor escrito ganha o valor
+        itens.push({ texto: 'Assinatura', valor: base })
       }
       if (!itens.length && !extras.length) continue
       for (const d of extras.sort((a, b) => a.competencia.localeCompare(b.competencia) || a.descricao.localeCompare(b.descricao)))
         itens.push({ texto: d.competencia < C ? `${d.descricao} (${comp(d.competencia)})` : d.descricao, valor: r2(d.saldo), despesa: d.id })
       const novo = r2(itens.reduce((s, i) => s + i.valor, 0))
-      // sem despesas extras: só mexe se o valor mudou (mantém a descrição curta "Honorários Mensais")
-      const descNova = !h && !gerada ? [itens[0].texto, ...itens.slice(1).map(i => linha(i.texto, i.valor))].join('\n')
-        : itens.length > 1 || !h ? itens.map(i => linha(i.texto, i.valor)).join('\n') : (p.descricao || 'Honorários Mensais')
-      const mudouValor = Math.abs(novo - p.valor) > 0.009
-      // descrição: só conta como mudança se alguma despesa ainda não aparece no texto do boleto (evita trocar só a formatação)
+      // Descrição: o Asaas já imprime a descrição da ASSINATURA no boleto (ex.: "Honorários Mensais").
+      // Por isso o Siscon manda só as despesas extras (uma linha por item, com valor), sem repetir o honorário
+      // nem o que já está na descrição da assinatura (ex.: NFStock da El-Shaday). Sem extras, a descrição fica como está.
       const semAcento = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ')
-      const mudouDesc = extras.some(d => !semAcento(p.descricao || '').includes(semAcento(d.descricao)))
+      const descAss = semAcento(assinaturaDe(p.assinatura)?.descricao || '')
+      const visiveis = itens.filter(i => i.despesa && !descAss.includes(semAcento(extras.find(d => d.id === i.despesa)!.descricao)))
+      const descNova = visiveis.length ? visiveis.map(i => linha(i.texto, i.valor)).join('\n') : (p.descricao || '')
+      const mudouValor = Math.abs(novo - p.valor) > 0.009
+      // só conta como mudança de descrição se alguma despesa ainda não aparece no boleto (descrição dele + a da assinatura)
+      const mudouDesc = extras.some(d => !semAcento((p.descricao || '') + ' ' + descAss).includes(semAcento(d.descricao)))
       if (!mudouValor && !mudouDesc) continue
       if (novo <= 0) avisos.push('valor ficaria zerado: confira e, se for o caso, cancele o boleto no Asaas')
       propostas.push({ id: p.id, cliente: c, vencimento: p.vencimento, comp: C, atual: p.valor, novo, descAtual: p.descricao || '', descNova, itens, avisos })
@@ -185,7 +186,7 @@ export default function AsaasAjustes() {
                 <p className="text-xs text-slate-400">vence {data(p.vencimento)} · competência {comp(p.comp)}</p>
                 <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
                   <pre className="whitespace-pre-wrap rounded-md bg-slate-50 px-2.5 py-1.5 font-sans text-xs text-slate-500"><span className="block text-[10px] font-semibold uppercase text-slate-400">Hoje no Asaas</span>{p.descAtual || '—'}</pre>
-                  <pre className="whitespace-pre-wrap rounded-md bg-blue-50 px-2.5 py-1.5 font-sans text-xs text-slate-700"><span className="block text-[10px] font-semibold uppercase text-blue-500">Vai ficar</span>{p.descNova}</pre>
+                  <pre className="whitespace-pre-wrap rounded-md bg-blue-50 px-2.5 py-1.5 font-sans text-xs text-slate-700"><span className="block text-[10px] font-semibold uppercase text-blue-500">Vai ficar</span>{p.descNova || '—'}<span className="mt-0.5 block text-[10px] text-slate-400">+ descrição da assinatura (o Asaas acrescenta)</span></pre>
                 </div>
                 {p.itens.some(i => i.despesa) && <button className="mt-1 text-xs text-slate-500 hover:text-red-600 hover:underline" onClick={() => ignorar(p)}>Não cobrar estas despesas pelo Asaas</button>}
                 {p.avisos.map(a => <p key={a} className="mt-1 text-xs font-medium text-amber-700">⚠ {a} (desmarcado; marque se estiver certo)</p>)}
