@@ -45,7 +45,7 @@ export default function Painel() {
       todos<{ razao_social: string; asaas_customer_id: string }>((a, b) => supabase.from('clientes').select('razao_social, asaas_customer_id').not('asaas_customer_id', 'is', null).range(a, b)),
     ])
     const nomes = new Map(cli.map(x => [x.asaas_customer_id, x.razao_social]))
-    return cob.map(x => ({ ...x, nome: nomes.get(x.customer_id) || x.descricao || 'Cliente não vinculado' }))
+    return cob.map(x => ({ ...x, nome: nomes.get(x.customer_id) || 'Cliente ainda não vinculado' }))
   })
   const pendAsaas = useDados(async () => (await supabase.from('asaas_eventos').select('id', { count: 'exact', head: true }).in('status', ['pendente', 'erro'])).count || 0)
 
@@ -193,13 +193,13 @@ function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: str
             </button>))}
         </div>
         {sel.length === 0
-          ? <p className="px-5 py-6 text-center text-sm text-slate-400">{doMes.length ? aba === 'vencer' ? 'Nenhum boleto a vencer neste mês.' : 'Nenhum boleto nesta situação.' : 'Nenhum aviso do Asaas para boletos deste mês ainda.'}</p>
+          ? <p className="px-5 py-6 text-center text-sm text-slate-400">{doMes.length ? aba === 'vencer' ? 'Nenhum boleto a vencer neste mês.' : 'Nenhum boleto nesta situação.' : 'Nenhum boleto com vencimento neste mês chegou pelos avisos do Asaas. Os criados antes de 05/11/2026 aparecem quando forem pagos ou vencerem.'}</p>
           : <ul className="mt-2 max-h-64 divide-y divide-slate-100 overflow-y-auto">
             {sel.map(x => (
               <li key={x.payment_id} className="flex items-center gap-3 px-5 py-2 text-sm">
                 <Avatar nome={x.nome} />
                 <span className="min-w-0 flex-1"><span className="block truncate font-medium text-slate-700">{x.nome}</span>
-                  <span className="text-xs text-slate-400">{aba === 'pagos' ? `pago em ${data(x.data_pagamento)}` : `vence ${data(x.vencimento)}`}{x.fatura ? ` · fatura ${x.fatura}` : ''}</span></span>
+                  <span className="block truncate text-xs text-slate-400">{aba === 'pagos' ? `pago em ${data(x.data_pagamento)}` : `vence ${data(x.vencimento)}`}{x.fatura ? ` · fatura ${x.fatura}` : ''}{x.descricao ? ` · ${x.descricao}` : ''}</span></span>
                 <span className={`num shrink-0 font-semibold ${blocos.find(b => b[0] === aba)![2]}`}>{moeda(Number(x.valor))}</span>
               </li>))}
           </ul>}
