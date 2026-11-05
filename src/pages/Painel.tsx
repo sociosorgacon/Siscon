@@ -39,6 +39,14 @@ export default function Painel() {
 
   // Saldo da conta Asaas (Edge Function); falha não atrapalha o resto do Painel
   const asaas = useDados(() => chamarAsaas<{ saldo: number }>('saldo'))
+  const boletos = useDados(async () => {
+    const [cob, cli] = await Promise.all([
+      todos<Cobranca>((a, b) => supabase.from('asaas_cobrancas').select('*').neq('status', 'DELETED').range(a, b)),
+      todos<{ razao_social: string; asaas_customer_id: string }>((a, b) => supabase.from('clientes').select('razao_social, asaas_customer_id').not('asaas_customer_id', 'is', null).range(a, b)),
+    ])
+    const nomes = new Map(cli.map(x => [x.asaas_customer_id, x.razao_social]))
+    return cob.map(x => ({ ...x, nome: nomes.get(x.customer_id) || x.descricao || 'Cliente não vinculado' }))
+  })
   const pendAsaas = useDados(async () => (await supabase.from('asaas_eventos').select('id', { count: 'exact', head: true }).in('status', ['pendente', 'erro'])).count || 0)
 
   const r = useMemo(() => {
@@ -127,14 +135,14 @@ export default function Painel() {
                   </li>))}
               </ul>}
           </Cartao>
-          <Cartao titulo="Recebimento dos honorários (últimos 6 meses)"><Grafico linhas={r.grafico} sel={c} escolher={m => setCompSel(m === config.competencia_atual ? '' : m)} /></Cartao>
+          <BoletosAsaas lista={boletos.dados} erro={!!boletos.erro} mes={r.pRec} v={v} />
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <Cartao titulo="Inadimplência" acoes={<Link to="/relatorios" className="text-sm text-marca-700 hover:underline">Ver todas</Link>}>
             {r.ranking.length === 0 ? <Vazio texto="Nenhum cliente em atraso." /> :
-              <ol className="grid divide-slate-100 sm:grid-cols-2 [&>li]:border-b [&>li]:border-slate-100">
-                {r.ranking.slice(0, 10).map((x, i) => (
+              <ol className="divide-y divide-slate-100">
+                {r.ranking.slice(0, 8).map((x, i) => (
                   <li key={x.nome} className="flex items-center gap-3 px-5 py-2.5 text-sm">
                     <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${i < 3 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
                     <Avatar nome={x.nome} />
@@ -144,10 +152,59 @@ export default function Painel() {
                   </li>))}
               </ol>}
           </Cartao>
+          <Cartao titulo="Recebimento dos honorários (últimos 6 meses)"><Grafico linhas={r.grafico} sel={c} escolher={m => setCompSel(m === config.competencia_atual ? '' : m)} /></Cartao>
         </div>
       </>}
       {det && dados && r && <DetalheIndicador qual={det} c={c} iso={compParaIso(c)} pRec={r.pRec} hon={dados.hon} des={dados.des} fechar={() => setDet(null)} />}
     </>
+  )
+}
+
+type Cobranca = { payment_id: string; customer_id: string; valor: number; vencimento: string; status: string; data_pagamento: string | null; descricao: string | null; fatura: string | null }
+const PAGO = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']
+
+/** Boletos do Asaas com vencimento no mês dos recebimentos da competência (alimentado pelos avisos do webhook) */
+function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: string })[] | null; erro: boolean; mes: string; v: (n: number) => string }) {
+  const hojeIso = new Date().toLocaleDateString('sv-SE')
+  const [aba, setAba] = useState<'vencidos' | 'vencer' | 'pagos'>('vencidos')
+  const doMes = (lista || []).filter(x => x.vencimento?.startsWith(mes))
+  const grupos = {
+    pagos: doMes.filter(x => PAGO.includes(x.status)).sort((a, b) => (b.data_pagamento || '').localeCompare(a.data_pagamento || '')),
+    vencer: doMes.filter(x => x.status === 'PENDING' && x.vencimento >= hojeIso).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
+    vencidos: doMes.filter(x => x.status === 'OVERDUE' || (x.status === 'PENDING' && x.vencimento < hojeIso)).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
+  }
+  const soma = (l: Cobranca[]) => l.reduce((s, x) => s + Number(x.valor || 0), 0)
+  const [a, m] = mes.split('-')
+  const blocos = [
+    ['vencidos', 'Vencidos', 'text-red-600', 'ring-red-200 bg-red-50'],
+    ['vencer', 'A vencer', 'text-amber-600', 'ring-amber-200 bg-amber-50'],
+    ['pagos', 'Pagos', 'text-emerald-600', 'ring-emerald-200 bg-emerald-50'],
+  ] as const
+  const sel = grupos[aba]
+  return (
+    <Cartao titulo={<span className="inline-flex items-center gap-2"><Icone nome="receber" className="h-4 w-4 text-blue-600" />Boletos Asaas · vencimento {m}/{a}</span>}
+      acoes={<Link to="/asaas" className="text-sm text-marca-700 hover:underline">Integração</Link>}>
+      {erro ? <Vazio texto="Situação dos boletos ainda não instalada (falta rodar o script 008 no Supabase)." /> : <>
+        <div className="grid grid-cols-3 gap-2 px-5 pt-4">
+          {blocos.map(([k, rot, cor, ativo]) => (
+            <button key={k} onClick={() => setAba(k)} className={`rounded-lg px-3 py-2 text-left ring-1 transition ${aba === k ? ativo : 'ring-slate-200 hover:bg-slate-50'}`}>
+              <span className="block text-[11px] font-medium uppercase tracking-wide text-slate-500">{rot} · {grupos[k].length}</span>
+              <span className={`num block text-base font-bold ${cor}`}>{v(soma(grupos[k]))}</span>
+            </button>))}
+        </div>
+        {sel.length === 0
+          ? <p className="px-5 py-6 text-center text-sm text-slate-400">{doMes.length ? 'Nenhum boleto nesta situação.' : 'Nenhum aviso do Asaas para boletos deste mês ainda.'}</p>
+          : <ul className="mt-2 max-h-64 divide-y divide-slate-100 overflow-y-auto">
+            {sel.map(x => (
+              <li key={x.payment_id} className="flex items-center gap-3 px-5 py-2 text-sm">
+                <Avatar nome={x.nome} />
+                <span className="min-w-0 flex-1"><span className="block truncate font-medium text-slate-700">{x.nome}</span>
+                  <span className="text-xs text-slate-400">{aba === 'pagos' ? `pago em ${data(x.data_pagamento)}` : `vence ${data(x.vencimento)}`}{x.fatura ? ` · fatura ${x.fatura}` : ''}</span></span>
+                <span className={`num shrink-0 font-semibold ${blocos.find(b => b[0] === aba)![2]}`}>{moeda(Number(x.valor))}</span>
+              </li>))}
+          </ul>}
+      </>}
+    </Cartao>
   )
 }
 
