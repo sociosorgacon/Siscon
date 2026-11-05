@@ -11,7 +11,7 @@ const descricoes: Partial<Record<keyof Config, string>> = {
   competencia_atual: 'Competência atual para geração de honorários e juros', escritorio_nome: 'Nome do escritório (recibo)',
   escritorio_cnpj: 'CNPJ do escritório (recibo)', escritorio_endereco: 'Endereço do escritório (recibo)',
   escritorio_cidade: 'Cidade/UF (local do recibo)', escritorio_telefone: 'Telefone do escritório (recibo)',
-  pix_chave: 'Chave Pix para o QR Code dos extratos',
+  pix_chave: 'Chave Pix para o QR Code da relação de honorários',
   descricoes_despesas: 'Descrições padronizadas de despesas extras (uma por linha)',
 }
 
@@ -93,7 +93,7 @@ export default function Configuracoes() {
           <p className="mt-3 text-xs text-slate-500">Cada competência usa o salário vigente nela: salário novo com vigência 01/01/2027 vale da competência 01/2027 em diante; a 12/2026 (gerada em janeiro) continua com o anterior. Para salário novo, informe o valor <b>e</b> a nova vigência. Honorários já lançados mantêm o valor. Juros só para clientes com multa por atraso, contados a cada virada de competência.</p>
         </Secao>
 
-        <Secao icone="recibos" cor="from-emerald-600 to-emerald-500" titulo="Dados do escritório" descricao="Aparecem no recibo, no extrato de débitos e no Pix">
+        <Secao icone="recibos" cor="from-emerald-600 to-emerald-500" titulo="Dados do escritório" descricao="Aparecem no recibo, na relação de honorários e no Pix">
           <div className="grid grid-cols-2 gap-3">
             <Campo rotulo="Nome" className="col-span-2">{campo('escritorio_nome')}</Campo>
             <Campo rotulo="CNPJ">{campo('escritorio_cnpj')}</Campo>

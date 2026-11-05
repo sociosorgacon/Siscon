@@ -99,7 +99,7 @@ export default function Relatorios() {
         ...g.des.map(d => ({ tipo: 'Despesa' as const, descricao: d.descricao, competencia: d.competencia, original: d.valor, juros: 0, pago: d.valor_pago, saldo: d.saldo })),
       ]
       await gerarExtratoPdf({ cliente: g.cliente, cnpj: g.cnpj, itens }, escritorioDe(config), pix)
-    } catch (e) { avisar('Erro ao gerar o extrato: ' + (e as Error).message, 'erro') }
+    } catch (e) { avisar('Erro ao gerar a relação de honorários: ' + (e as Error).message, 'erro') }
   }
 
   // Financeiro: baixas feitas no mês seguinte à competência, agrupadas por cliente (como o relatório do Base44)
@@ -135,12 +135,12 @@ export default function Relatorios() {
 
   async function exportar() {
     const linhasAberto = (gs: Grupo[]) => gs.flatMap(g => [
-      ...g.hon.map(h => ({ cliente: g.cliente, cnpj: doc(g.cnpj), tipo: 'Honorário', descricao: 'Honorários', comp: comp(h.competencia), venc: h.vencimento, original: h.valor_original, juros: h.juros_calc, pago: h.valor_pago_acumulado, saldo: h.saldo, status: h.situacao })),
-      ...g.des.map(d => ({ cliente: g.cliente, cnpj: doc(g.cnpj), tipo: 'Despesa', descricao: d.descricao, comp: comp(d.competencia), venc: d.data, original: d.valor, juros: 0, pago: d.valor_pago, saldo: d.saldo, status: d.status })),
+      ...g.hon.map(h => ({ cliente: g.cliente, cnpj: doc(g.cnpj), tipo: 'Honorário', descricao: 'Honorários', comp: comp(h.competencia), venc: h.vencimento, original: h.valor_original + h.juros_calc, pago: h.valor_pago_acumulado, saldo: h.saldo, status: h.situacao })),
+      ...g.des.map(d => ({ cliente: g.cliente, cnpj: doc(g.cnpj), tipo: 'Despesa', descricao: d.descricao, comp: comp(d.competencia), venc: d.data, original: d.valor, pago: d.valor_pago, saldo: d.saldo, status: d.status })),
     ])
     const col = [{ titulo: 'Cliente', chave: 'cliente', largura: 44 }, { titulo: 'CNPJ/CPF', chave: 'cnpj', largura: 20 }, { titulo: 'Tipo', chave: 'tipo', largura: 11 },
       { titulo: 'Descrição', chave: 'descricao', largura: 28 }, { titulo: 'Competência', chave: 'comp', largura: 12 }, { titulo: 'Vencimento/Data', chave: 'venc', tipo: 'data' as const, largura: 15 },
-      { titulo: 'Valor', chave: 'original', tipo: 'moeda' as const }, { titulo: 'Juros', chave: 'juros', tipo: 'moeda' as const }, { titulo: 'Pago', chave: 'pago', tipo: 'moeda' as const },
+      { titulo: 'Valor', chave: 'original', tipo: 'moeda' as const }, { titulo: 'Pago', chave: 'pago', tipo: 'moeda' as const },
       { titulo: 'Saldo devedor', chave: 'saldo', tipo: 'moeda' as const, largura: 15 }, { titulo: 'Status', chave: 'status', largura: 13 }]
     try {
       await baixarExcel(`Siscon_Relatorio_${c.replace('/', '-')}.xlsx`, [
@@ -148,8 +148,8 @@ export default function Relatorios() {
           colunas: [{ titulo: 'Cliente', chave: 'cliente', largura: 44 }, { titulo: 'CNPJ/CPF', chave: 'doc', largura: 20 }, { titulo: 'Telefone', chave: 'telefone', largura: 16 },
             { titulo: 'Honorários', chave: 'totHon', tipo: 'moeda' }, { titulo: 'Despesas', chave: 'totDes', tipo: 'moeda' }, { titulo: 'Total a receber', chave: 'total', tipo: 'moeda', largura: 16 }],
           linhas: gruposMensal.map(g => ({ ...g, doc: doc(g.cnpj) })) },
-        { nome: 'Débitos em aberto', titulo: `Débitos em aberto até a competência ${c}`, colunas: col, linhas: linhasAberto(gruposMensal), total: ['original', 'juros', 'pago', 'saldo'] },
-        { nome: 'Inadimplência', titulo: `Inadimplência — competências anteriores a ${c}`, colunas: col, linhas: linhasAberto(gruposInad), total: ['original', 'juros', 'pago', 'saldo'] },
+        { nome: 'Débitos em aberto', titulo: `Débitos em aberto até a competência ${c}`, colunas: col, linhas: linhasAberto(gruposMensal), total: ['original', 'pago', 'saldo'] },
+        { nome: 'Inadimplência', titulo: `Inadimplência — competências anteriores a ${c}`, colunas: col, linhas: linhasAberto(gruposInad), total: ['original', 'pago', 'saldo'] },
         { nome: 'Baixas do mês', titulo: `Baixas realizadas em ${pRec.split('-').reverse().join('/')} (competência ${c})`, total: ['pago'],
           colunas: [{ titulo: 'Cliente', chave: 'cliente', largura: 44 }, { titulo: 'Tipo', chave: 'tipo', largura: 11 }, { titulo: 'Referência', chave: 'ref', largura: 30 },
             { titulo: 'Valor', chave: 'valor', tipo: 'moeda' }, { titulo: 'Valor pago', chave: 'pago', tipo: 'moeda' }, { titulo: 'Vencimento', chave: 'venc', tipo: 'data', largura: 12 }],
@@ -296,7 +296,7 @@ function CartaoCliente({ g, whats, extrato }: { g: Grupo; whats: string | null; 
           </span>
           <span className="flex items-center gap-3">
             <span className="text-slate-600">Total a receber: <b className="num text-base text-slate-900">{moeda(g.total)}</b></span>
-            <button onClick={extrato} className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50 print:hidden">Extrato c/ Pix</button>
+            <button onClick={extrato} className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50 print:hidden">Relação c/ Pix</button>
             {whats && <a href={whats} target="_blank" rel="noreferrer" className="rounded-md bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 print:hidden">WhatsApp</a>}
           </span>
         </div>
