@@ -417,18 +417,18 @@ function ImpressaoDebitos({ grupos, titulo, escritorio, qr, chave }: { grupos: G
       <p className="mb-2 text-[8pt] text-slate-600">{grupos.length} cliente(s) · Honorários <b className="num">{moeda(totHon)}</b> · Despesas extras <b className="num">{moeda(totDes)}</b> · <b>Total em aberto <span className="num">{moeda(totHon + totDes)}</span></b></p>
       <table className="w-full border-collapse">
         <thead><tr className="border-b border-slate-400 text-left text-[7pt] uppercase text-slate-500">
-          <th className="py-0.5 font-semibold">Descrição</th><th className="font-semibold">Compet.</th><th className="font-semibold">Venc./Data</th>
+          <th className="py-0.5 font-semibold">Descrição</th><th className="font-semibold">Compet.</th>
           <th className="text-right font-semibold">Valor</th><th className="text-right font-semibold">Pago</th><th className="text-right font-semibold">Saldo</th><th className="pl-2 font-semibold">Situação</th></tr></thead>
         {grupos.map(g => (
           <tbody key={g.id} className="break-inside-avoid">
-            <tr className="bg-slate-100 [print-color-adjust:exact]"><td colSpan={5} className="px-1 pb-0.5 pt-1 font-bold">{g.cliente} <span className="font-normal text-slate-500">{g.cnpj ? doc(g.cnpj) : ''}</span></td>
+            <tr className="bg-slate-100 [print-color-adjust:exact]"><td colSpan={4} className="px-1 pb-0.5 pt-1 font-bold">{g.cliente} <span className="font-normal text-slate-500">{g.cnpj ? doc(g.cnpj) : ''}</span></td>
               <td className="num px-1 pt-1 text-right font-bold">{moeda(g.total)}</td><td /></tr>
             {g.hon.map(h => <tr key={h.id} className="border-b border-slate-100">
-              <td className="pl-3">Honorários</td><td className="num">{comp(h.competencia)}</td><td className="num">{data(h.vencimento)}</td>
+              <td className="pl-3">Honorários</td><td className="num">{comp(h.competencia)}</td>
               <td className="num text-right">{moeda(h.valor_original + h.juros_calc)}</td><td className="num text-right">{h.valor_pago_acumulado ? moeda(h.valor_pago_acumulado) : '—'}</td>
               <td className="num text-right font-semibold">{moeda(h.saldo)}</td><td className="pl-2 text-[7.5pt]">{h.situacao}</td></tr>)}
             {g.des.map(d => <tr key={d.id} className="border-b border-slate-100">
-              <td className="pl-3">{d.descricao}</td><td className="num">{comp(d.competencia)}</td><td className="num">{data(d.data)}</td>
+              <td className="pl-3">{d.descricao}</td><td className="num">{comp(d.competencia)}</td>
               <td className="num text-right">{moeda(d.valor)}</td><td className="num text-right">{d.valor_pago ? moeda(d.valor_pago) : '—'}</td>
               <td className="num text-right font-semibold">{moeda(d.saldo)}</td><td className="pl-2 text-[7.5pt]">Despesa extra</td></tr>)}
           </tbody>))}
