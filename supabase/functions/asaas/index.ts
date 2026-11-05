@@ -100,7 +100,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Etapa 2: altera boletos PENDENTES (confere a situação no Asaas antes de alterar) — lista aprovada no Siscon
     // Etapa 2 (mais rápida): só assinaturas ativas e boletos PENDENTES que ainda não venceram — sem lista de clientes
     if (acao === 'ajustes') {
       const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
@@ -120,6 +119,7 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Etapa 2: altera boletos PENDENTES (confere a situação no Asaas antes de alterar) — lista aprovada no Siscon
     if (acao === 'aplicar_boletos') {
       const { ajustes } = corpoReq as { ajustes: { id: string; valor: number; descricao: string }[] }
       const resultado = []
