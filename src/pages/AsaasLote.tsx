@@ -48,6 +48,8 @@ export default function AsaasLote() {
   const { config } = useApp()
   const [mes, setMes] = useState(() => config.competencia_atual ? mesSeguinte(config.competencia_atual) : new Date().toISOString().slice(0, 7))
   const [listas, setListas] = useState<Record<string, BoletoLote[] | undefined>>({})
+  // boletos marcados por grupo: ao buscar, todos vêm marcados; dá para desmarcar algum antes de gerar
+  const [marc, setMarc] = useState<Record<string, Set<string>>>({})
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [prog, setProg] = useState('')
   const [mm, aa] = [mes.slice(5), mes.slice(0, 4)]
@@ -57,13 +59,14 @@ export default function AsaasLote() {
     try {
       const r = await chamarAsaas<{ boletos: BoletoLote[]; clientesNoGrupo: number }>('lote', { grupo, mes })
       setListas(l => ({ ...l, [grupo]: r.boletos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) }))
+      setMarc(m => ({ ...m, [grupo]: new Set(r.boletos.map(b => b.id)) }))
       if (!r.clientesNoGrupo) avisar(`Nenhum cliente no grupo "${grupo}" do Asaas. Confira o nome do grupo no cadastro dos clientes no Asaas.`, 'erro')
     } catch (e) { avisar((e as Error).message, 'erro') } finally { setOcupado(null); setProg('') }
   }
 
   async function gerar(grupo: string) {
-    const lista = listas[grupo] || []
-    if (!lista.length) return
+    const lista = (listas[grupo] || []).filter(b => marc[grupo]?.has(b.id))
+    if (!lista.length) return avisar('Marque ao menos um boleto.', 'erro')
     setOcupado(grupo)
     try {
       const { out, erros } = await baixarPdfs(lista, n => setProg(`Baixando boletos ${n}/${lista.length}…`))
@@ -94,24 +97,31 @@ export default function AsaasLote() {
   return <>
     <div className="mb-4 flex flex-wrap items-end gap-3">
       <label className="text-sm"><span className="rotulo">Vencimento no mês</span>
-        <input type="month" className="campo w-44" value={mes} onChange={e => { setMes(e.target.value); setListas({}) }} /></label>
+        <input type="month" className="campo w-44" value={mes} onChange={e => { setMes(e.target.value); setListas({}); setMarc({}) }} /></label>
       <p className="pb-2 text-sm text-slate-500">Entram os boletos <b>pendentes</b> com vencimento em {mm}/{aa} dos clientes de cada grupo do Asaas. Gere depois de fazer os ajustes do mês.</p>
     </div>
     <div className="grid gap-6 lg:grid-cols-2">
       {GRUPOS.map(g => {
         const lista = listas[g.grupo]
-        const total = (lista || []).reduce((s, b) => s + b.valor, 0)
+        const sel = marc[g.grupo] || new Set<string>()
+        const marcados = (lista || []).filter(b => sel.has(b.id))
+        const total = marcados.reduce((s, b) => s + b.valor, 0)
+        const alternar = (id: string) => setMarc(m => { const n = new Set(m[g.grupo]); if (n.has(id)) n.delete(id); else n.add(id); return { ...m, [g.grupo]: n } })
+        const todos = !!lista?.length && marcados.length === lista.length
         return <Cartao key={g.grupo} titulo={<span className="inline-flex items-center gap-2">{g.grupo === 'Impressos' ? <Icone nome="impressora" className="h-4 w-4 text-blue-600" /> : <img src="/acessorias.png" alt="" className="h-4 w-4 object-contain" />}Grupo {g.titulo} <span className="text-xs font-normal text-slate-400">· {g.saida}</span></span>}
           acoes={<div className="flex gap-2">
             <Botao variante="secundario" onClick={() => buscar(g.grupo)} disabled={!!ocupado}>{lista ? 'Buscar de novo' : 'Buscar boletos'}</Botao>
-            {lista && lista.length > 0 && <Botao onClick={() => gerar(g.grupo)} disabled={!!ocupado}>{g.grupo === 'Impressos' ? 'Gerar PDF' : 'Baixar ZIP'}</Botao>}
+            {lista && lista.length > 0 && <Botao onClick={() => gerar(g.grupo)} disabled={!!ocupado || !marcados.length}>{g.grupo === 'Impressos' ? `Gerar PDF (${marcados.length})` : `Baixar ZIP (${marcados.length})`}</Botao>}
           </div>}>
           {ocupado === g.grupo && <p className="border-b border-slate-100 bg-blue-50 px-5 py-2 text-sm text-blue-700">{prog}</p>}
           {!lista ? <Vazio texto={`Clique em "Buscar boletos" para listar os boletos de ${mm}/${aa}.`} /> : lista.length === 0 ? <Vazio texto="Nenhum boleto pendente desse grupo no mês." /> : <>
-            <p className="px-5 pt-3 text-sm text-slate-600"><b>{lista.length}</b> boleto(s) · total <b className="num">{moeda(total)}</b></p>
+            <label className="flex cursor-pointer items-center gap-3 px-5 pt-3 text-sm text-slate-600">
+              <input type="checkbox" checked={todos} onChange={() => setMarc(m => ({ ...m, [g.grupo]: todos ? new Set() : new Set(lista.map(b => b.id)) }))} />
+              <span><b>{marcados.length}</b> de {lista.length} boleto(s) marcados · total <b className="num">{moeda(total)}</b></span></label>
             <ul className="mt-1 max-h-80 divide-y divide-slate-100 overflow-y-auto">
-              {lista.map(b => <li key={b.id} className="flex items-center gap-3 px-5 py-1.5 text-sm">
-                <span className="min-w-0 flex-1 truncate text-slate-700">{b.nome}</span>
+              {lista.map(b => <li key={b.id} className={`flex items-center gap-3 px-5 py-1.5 text-sm ${sel.has(b.id) ? '' : 'opacity-50'}`}>
+                <input type="checkbox" checked={sel.has(b.id)} onChange={() => alternar(b.id)} />
+                <span className="min-w-0 flex-1 cursor-pointer truncate text-slate-700" onClick={() => alternar(b.id)}>{b.nome}</span>
                 <span className="text-xs text-slate-400">vence {data(b.vencimento)}</span>
                 <span className="num w-24 text-right">{moeda(b.valor)}</span>
                 <button className="text-xs text-marca-700 hover:underline" onClick={() => abrirBoleto({ id: b.id }).catch(e => avisar((e as Error).message, 'erro'))}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Boleto</span></button>
