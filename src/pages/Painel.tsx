@@ -42,10 +42,12 @@ export default function Painel() {
   const boletos = useDados(async () => {
     const [cob, cli] = await Promise.all([
       todos<Cobranca>((a, b) => supabase.from('asaas_cobrancas').select('*').neq('status', 'DELETED').range(a, b)),
-      todos<{ razao_social: string; asaas_customer_id: string }>((a, b) => supabase.from('clientes').select('razao_social, asaas_customer_id').not('asaas_customer_id', 'is', null).range(a, b)),
+      todos<{ razao_social: string; cnpj: string | null; asaas_customer_id: string | null }>((a, b) => supabase.from('clientes').select('razao_social, cnpj, asaas_customer_id').range(a, b)),
     ])
-    const nomes = new Map(cli.map(x => [x.asaas_customer_id, x.razao_social]))
-    return cob.map(x => ({ ...x, nome: nomes.get(x.customer_id) || 'Cliente ainda não vinculado' }))
+    // nome do Siscon pelo vínculo do Asaas ou pelo CPF/CNPJ da planilha importada; senão, o nome que está no Asaas
+    const porCus = new Map(cli.filter(x => x.asaas_customer_id).map(x => [x.asaas_customer_id, x.razao_social]))
+    const porDoc = new Map(cli.filter(x => x.cnpj).map(x => [x.cnpj!.replace(/\D/g, ''), x.razao_social]))
+    return cob.map(x => ({ ...x, nome: porCus.get(x.customer_id) || (x.cpf_cnpj && porDoc.get(x.cpf_cnpj)) || x.cliente_nome || 'Cliente ainda não vinculado' }))
   })
   const pendAsaas = useDados(async () => (await supabase.from('asaas_eventos').select('id', { count: 'exact', head: true }).in('status', ['pendente', 'erro'])).count || 0)
 
@@ -160,7 +162,7 @@ export default function Painel() {
   )
 }
 
-type Cobranca = { payment_id: string; customer_id: string; valor: number; vencimento: string; status: string; data_pagamento: string | null; descricao: string | null; fatura: string | null }
+type Cobranca = { payment_id: string; customer_id: string; valor: number; vencimento: string; status: string; data_pagamento: string | null; descricao: string | null; fatura: string | null; cliente_nome: string | null; cpf_cnpj: string | null }
 const PAGO = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']
 
 /** Boletos do Asaas com vencimento no mês dos recebimentos da competência (alimentado pelos avisos do webhook) */
