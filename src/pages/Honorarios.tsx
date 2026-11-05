@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Honorario } from '../lib/supabase'
 import { useApp, useDados, salarioPara, type SalarioMinimo } from '../lib/app'
@@ -226,7 +226,7 @@ function FechamentoEscrita({ fechar }: { fechar: () => void }) {
   const nome = `Fechamento de Escrita ${ano}`
   const { dados } = useDados(async () => {
     const [cli, sal, ja] = await Promise.all([
-      todos<Cliente>((a, b) => supabase.from('clientes').select('*').eq('status', 'Ativo').gt('percentual_honorario', 0).order('razao_social').range(a, b)),
+      todos<Cliente>((a, b) => supabase.from('clientes').select('*').eq('status', 'Ativo').eq('gera_fechamento', true).gt('percentual_honorario', 0).order('razao_social').range(a, b)),
       ok(await supabase.from('salarios_minimos').select('vigencia, valor')) as SalarioMinimo[],
       todos<{ cliente_id: string }>((a, b) => supabase.from('despesas').select('cliente_id').ilike('descricao', `${nome}%`).range(a, b)),
     ])
@@ -236,7 +236,9 @@ function FechamentoEscrita({ fechar }: { fechar: () => void }) {
   const valorDe = (c: Cliente) => Math.round(sm * c.percentual_honorario) / 100
   const [sel, setSel] = useState<string[]>([])
   const [filtro, setFiltro] = useState('')
-  const [parcelas, setParcelas] = useState(1)
+  const [parcelas, setParcelas] = useState(3)
+  // padrão: todos os clientes da lista marcados (menos os que já têm o fechamento do ano)
+  useEffect(() => { if (dados) setSel(dados.cli.filter(c => !dados.ja.has(c.id)).map(c => c.id)) }, [dados])
   const [salvando, setSalvando] = useState(false)
   const livres = (dados?.cli || []).filter(c => !dados!.ja.has(c.id))
   const lista = (dados?.cli || []).filter(c => !filtro || normaliza(c.razao_social).includes(normaliza(filtro)))
@@ -267,7 +269,7 @@ function FechamentoEscrita({ fechar }: { fechar: () => void }) {
   return (
     <Modal titulo={nome} aberto fechar={fechar} largura="max-w-2xl">
       {!dados ? <Carregando /> : <form onSubmit={salvar} className="grid gap-3">
-        <p className="text-sm text-slate-500">Mesmo valor do honorário mensal de cada cliente (salário mínimo de {moeda(sm)} × %). Entra como despesa extra, <b>sem juros</b>, a partir da competência {config.competencia_atual}.</p>
+        <p className="text-sm text-slate-500">Mesmo valor do honorário mensal de cada cliente (salário mínimo de {moeda(sm)} × %). Entra como despesa extra, <b>sem juros</b>, a partir da competência {config.competencia_atual}. Só aparecem os clientes marcados com “Gera Fechamento de Escrita” no cadastro.</p>
         <div>
           <div className="mb-1 flex items-center justify-between gap-2">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={todosMarcados} onChange={e => setSel(e.target.checked ? livres.map(c => c.id) : [])} />Selecionar todos ({livres.length})</label>

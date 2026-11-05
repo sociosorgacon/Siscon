@@ -5,7 +5,7 @@ import { moeda, doc, normaliza } from '../lib/format'
 import { Avatar, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone } from '../components/icones'
 
-const novo = (): Partial<Cliente> => ({ status: 'Ativo', percentual_honorario: 0, dia_vencimento: 10, multa_por_atraso: true })
+const novo = (): Partial<Cliente> => ({ status: 'Ativo', percentual_honorario: 0, dia_vencimento: 10, multa_por_atraso: true, gera_fechamento: true })
 
 export default function Clientes() {
   const { config } = useApp()
@@ -136,6 +136,9 @@ function FormCliente({ cliente, sm, fechar, salvo }: { cliente: Partial<Cliente>
           </div>
           <label className="col-span-6 flex items-center gap-2 text-sm">
             <input type="checkbox" checked={!!c.multa_por_atraso} onChange={e => set('multa_por_atraso', e.target.checked)} /> Multa por atraso (cobra juros de 1,55% a.m. quando a competência vira)
+          </label>
+          <label className="col-span-6 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={c.gera_fechamento !== false} onChange={e => set('gera_fechamento', e.target.checked)} /> Gera Fechamento de Escrita (honorário de fim de ano, botão em Honorários)
           </label>
         </div>
 
