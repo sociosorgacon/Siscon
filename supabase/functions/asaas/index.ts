@@ -101,6 +101,25 @@ Deno.serve(async (req) => {
     }
 
     // Etapa 2: altera boletos PENDENTES (confere a situação no Asaas antes de alterar) — lista aprovada no Siscon
+    // Etapa 2 (mais rápida): só assinaturas ativas e boletos PENDENTES que ainda não venceram — sem lista de clientes
+    if (acao === 'ajustes') {
+      const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+      const [assinaturas, pendentes] = await Promise.all([
+        asaasTodos('/subscriptions?status=ACTIVE'),
+        asaasTodos(`/payments?status=PENDING&dueDate%5Bge%5D=${hoje}`),
+      ])
+      return resposta({
+        assinaturas: (assinaturas as Obj[]).map(s => ({
+          id: s.id, cliente_asaas: s.customer, nome: '', cpfCnpj: '', valor: Number(s.value), proximo_vencimento: s.nextDueDate,
+          descricao: s.description || '', forma: s.billingType, ciclo: s.cycle,
+        })),
+        cobrancas: (pendentes as Obj[]).map(p => ({
+          id: p.id, assinatura: p.subscription || null, cliente_asaas: p.customer, nome: '', cpfCnpj: '', valor: Number(p.value),
+          vencimento: p.dueDate, status: p.status, descricao: p.description || '', link: p.invoiceUrl || null,
+        })),
+      })
+    }
+
     if (acao === 'aplicar_boletos') {
       const { ajustes } = corpoReq as { ajustes: { id: string; valor: number; descricao: string }[] }
       const resultado = []

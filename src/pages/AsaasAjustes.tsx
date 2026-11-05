@@ -24,6 +24,10 @@ const dig = (s: string | null | undefined) => (s || '').replace(/\D/g, '')
 const compDoVenc = (venc: string) => { const [a, m] = venc.split('-').map(Number); return m === 1 ? `${a - 1}-12-01` : `${a}-${String(m - 1).padStart(2, '0')}-01` }
 const linha = (texto: string, valor: number) => `${texto} - ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+type Dados = { assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[]; cli: Cliente[]; hon: Honorario[]; des: DespesaB[]; fixas: Fixa[]; sal: SalarioMinimo[] }
+let cache: { t: number; desde: string; dados: Dados } | null = null
+const forcar = { atual: false }
+
 export default function AsaasAjustes() {
   const avisar = useAviso()
   const { config } = useApp()
@@ -32,17 +36,27 @@ export default function AsaasAjustes() {
   const [aplicando, setAplicando] = useState(false)
   const desde = compParaIso((config as unknown as Record<string, string>).asaas_ajuste_desde || config.competencia_atual)
 
-  const { dados, erro, recarregar } = useDados(async () => {
-    const [asaas, cli, hon, des, fixas, sal] = await Promise.all([
-      chamarAsaas<{ assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[] }>('conferencia'),
+  const { dados, erro, recarregar: recarregarDados } = useDados(async () => {
+    // guarda a consulta por 10 min enquanto o Siscon estiver aberto (trocar de aba não consulta de novo)
+    if (!forcar.atual && cache && cache.desde === desde && Date.now() - cache.t < 10 * 60 * 1000) return cache.dados
+    forcar.atual = false
+    const [asaas, cli, hon, des, fixas, sal, docs] = await Promise.all([
+      chamarAsaas<{ assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[] }>('ajustes'),
       todos<Cliente>((a, b) => supabase.from('clientes').select('*').range(a, b)),
       todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').gte('competencia', desde).range(a, b)),
       todos<DespesaB>((a, b) => supabase.from('v_despesas').select('*').gt('saldo', 0).range(a, b)),
       todos<Fixa>((a, b) => supabase.from('despesas_fixas').select('cliente_id, valor, ativa').range(a, b)),
       ok(await supabase.from('salarios_minimos').select('vigencia, valor')) as SalarioMinimo[],
+      // CPF/CNPJ do cliente do Asaas já guardado pelos avisos/planilha (para clientes ainda sem vínculo)
+      todos<{ customer_id: string; cpf_cnpj: string }>((a, b) => supabase.from('asaas_cobrancas').select('customer_id, cpf_cnpj').not('customer_id', 'is', null).not('cpf_cnpj', 'is', null).range(a, b)),
     ])
-    return { ...asaas, cli, hon, des, fixas, sal }
+    const docDe = new Map(docs.map(d => [d.customer_id, d.cpf_cnpj]))
+    const comDoc = <T extends { cliente_asaas: string; cpfCnpj: string }>(x: T) => ({ ...x, cpfCnpj: x.cpfCnpj || docDe.get(x.cliente_asaas) || '' })
+    const r = { assinaturas: asaas.assinaturas.map(comDoc), cobrancas: asaas.cobrancas.map(comDoc), cli, hon, des, fixas, sal }
+    cache = { t: Date.now(), desde, dados: r }
+    return r
   }, [desde])
+  const recarregar = () => { forcar.atual = true; recarregarDados() }
 
   const r = useMemo(() => {
     if (!dados) return null
