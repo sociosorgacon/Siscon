@@ -22,17 +22,17 @@ TOKEN=$(openssl rand -hex 24)
 
 cat > /etc/caddy/Caddyfile <<CADDY
 $HOST {
-	@autorizado header X-Ponte-Token $TOKEN
-	handle @autorizado {
-		reverse_proxy https://api.asaas.com {
-			header_up Host {upstream_hostport}
-			header_up -X-Ponte-Token
-		}
-	}
-	respond "Acesso negado" 403
+    @autorizado header X-Ponte-Token $TOKEN
+    handle @autorizado {
+        reverse_proxy https://api.asaas.com {
+            header_up Host {upstream_hostport}
+            header_up -X-Ponte-Token
+        }
+    }
+    respond "Acesso negado" 403
 }
 CADDY
-chmod 640 /etc/caddy/Caddyfile
+chown root:caddy /etc/caddy/Caddyfile; chmod 640 /etc/caddy/Caddyfile   # o Caddy roda como usuário "caddy" e precisa ler o arquivo
 systemctl enable caddy
 systemctl restart caddy
 
