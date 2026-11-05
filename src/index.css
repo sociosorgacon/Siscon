@@ -41,6 +41,7 @@ input[type="checkbox"] { @apply h-4 w-4 rounded border-slate-300 accent-marca-70
 .filtros { @apply flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3; }
 }
 
+@page { size: A4; margin: 10mm; }
 @media print {
   body { background: white; }
   .cartao { box-shadow: none !important; }

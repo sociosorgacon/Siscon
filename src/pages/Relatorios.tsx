@@ -244,7 +244,7 @@ export default function Relatorios() {
           <div className="min-w-0 space-y-3">
             {/* Bloco Pix: só na impressão */}
             {aba !== 'financeiro' && (
-              <div className="mx-auto hidden w-fit items-center gap-5 rounded-xl bg-white px-6 py-3 shadow-sm ring-1 ring-slate-100 print:flex">
+              <div className="hidden">
                 <img src="/logo.png" alt="Orgacon" className="h-10" />
                 <span className="h-16 w-px bg-slate-300" />
                 <div className="text-center">
@@ -255,7 +255,7 @@ export default function Relatorios() {
               </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm print:border-0 print:shadow-none">
+            <div className={`flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm print:border-0 print:shadow-none ${aba !== 'financeiro' ? 'print:hidden' : ''}`}>
               <Icone nome="calendario" className="h-4 w-4 text-slate-500" />
               <span className="text-sm font-medium text-slate-700">{aba === 'financeiro' ? 'Competência:' : aba === 'inadimplencia' ? 'Atrasados antes da competência:' : 'Débitos até a competência:'}</span>
               <select className="campo !h-9 w-44" value={c} onChange={e => setCompSel(e.target.value)}>
@@ -266,6 +266,9 @@ export default function Relatorios() {
             </div>
 
             {aba === 'financeiro' ? <Financeiro fin={fin} porComp={porComp} c={c} pRec={pRec} /> : <>
+              <ImpressaoDebitos grupos={visiveis} titulo={aba === 'inadimplencia' ? `Inadimplência — competências anteriores a ${c}` : `Relatório Mensal — débitos até a competência ${c}`}
+                escritorio={config.escritorio_nome} qr={qr} chave={doc(pix.chave)} />
+              <div className="print:hidden space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2 text-center">
                   <p className="text-sm font-medium uppercase tracking-wide text-blue-800">Total honorários em aberto</p>
@@ -283,8 +286,9 @@ export default function Relatorios() {
                 <span className="font-semibold uppercase tracking-wide">Total geral em aberto{sel ? ` (${visiveis.length} selecionados)` : ''}</span>
                 <span className="num text-xl font-bold">{moeda(totHon + totDes)}</span>
               </div>
+              </div>
             </>}
-            <p className="text-center text-xs text-slate-500">Relatório gerado em {agora.toLocaleDateString('pt-BR')} às {agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · {config.escritorio_nome}</p>
+            <p className="text-center text-xs text-slate-500 print:hidden">Relatório gerado em {agora.toLocaleDateString('pt-BR')} às {agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · {config.escritorio_nome}</p>
           </div>
         </div>
       )}
@@ -390,4 +394,47 @@ function Financeiro({ fin, porComp, c, pRec }: { fin: Fin; porComp: { comp: stri
       </table></div>
     </section>
   </>
+}
+
+/**
+ * Versão de IMPRESSÃO (Imprimir/PDF) das abas Relatório Mensal e Inadimplência — só aparece no papel.
+ * Compacta: cabeçalho com logo e Pix pequeno, uma faixa por cliente (nome, CNPJ, total) e uma linha por
+ * honorário e por despesa (como na tela), letra pequena e sem botões, para caber em menos folhas.
+ */
+function ImpressaoDebitos({ grupos, titulo, escritorio, qr, chave }: { grupos: Grupo[]; titulo: string; escritorio: string; qr: string; chave: string }) {
+  const totHon = grupos.reduce((s, g) => s + g.totHon, 0), totDes = grupos.reduce((s, g) => s + g.totDes, 0)
+  const agora = new Date()
+  return (
+    <div className="hidden text-[8pt] leading-[1.2] text-slate-900 print:block">
+      <header className="mb-2 flex items-center gap-4 border-b-2 border-[#204879] pb-2">
+        <img src="/logo.png" alt="" className="h-9" />
+        <div className="flex-1">
+          <p className="text-[11pt] font-bold text-[#204879]">{titulo}</p>
+          <p className="text-[7.5pt] text-slate-500">{escritorio} · emitido em {agora.toLocaleDateString('pt-BR')} às {agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · valores de honorários já com juros</p>
+        </div>
+        {qr && <div className="flex items-center gap-2 text-right"><div><p className="text-[8pt] font-bold text-[#204879]">PIX</p><p className="text-[7pt] text-slate-600">Chave {chave}</p></div><img src={qr} alt="" className="h-14 w-14" /></div>}
+      </header>
+      <p className="mb-2 text-[8pt] text-slate-600">{grupos.length} cliente(s) · Honorários <b className="num">{moeda(totHon)}</b> · Despesas extras <b className="num">{moeda(totDes)}</b> · <b>Total em aberto <span className="num">{moeda(totHon + totDes)}</span></b></p>
+      <table className="w-full border-collapse">
+        <thead><tr className="border-b border-slate-400 text-left text-[7pt] uppercase text-slate-500">
+          <th className="py-0.5 font-semibold">Descrição</th><th className="font-semibold">Compet.</th><th className="font-semibold">Venc./Data</th>
+          <th className="text-right font-semibold">Valor</th><th className="text-right font-semibold">Pago</th><th className="text-right font-semibold">Saldo</th><th className="pl-2 font-semibold">Situação</th></tr></thead>
+        {grupos.map(g => (
+          <tbody key={g.id} className="break-inside-avoid">
+            <tr className="bg-slate-100 [print-color-adjust:exact]"><td colSpan={5} className="px-1 pb-0.5 pt-1 font-bold">{g.cliente} <span className="font-normal text-slate-500">{g.cnpj ? doc(g.cnpj) : ''}</span></td>
+              <td className="num px-1 pt-1 text-right font-bold">{moeda(g.total)}</td><td /></tr>
+            {g.hon.map(h => <tr key={h.id} className="border-b border-slate-100">
+              <td className="pl-3">Honorários</td><td className="num">{comp(h.competencia)}</td><td className="num">{data(h.vencimento)}</td>
+              <td className="num text-right">{moeda(h.valor_original + h.juros_calc)}</td><td className="num text-right">{h.valor_pago_acumulado ? moeda(h.valor_pago_acumulado) : '—'}</td>
+              <td className="num text-right font-semibold">{moeda(h.saldo)}</td><td className="pl-2 text-[7.5pt]">{h.situacao}</td></tr>)}
+            {g.des.map(d => <tr key={d.id} className="border-b border-slate-100">
+              <td className="pl-3">{d.descricao}</td><td className="num">{comp(d.competencia)}</td><td className="num">{data(d.data)}</td>
+              <td className="num text-right">{moeda(d.valor)}</td><td className="num text-right">{d.valor_pago ? moeda(d.valor_pago) : '—'}</td>
+              <td className="num text-right font-semibold">{moeda(d.saldo)}</td><td className="pl-2 text-[7.5pt]">Despesa extra</td></tr>)}
+          </tbody>))}
+      </table>
+      {/* fora do <tfoot> para não repetir em todas as folhas */}
+      <div className="mt-1 flex justify-between border-t-2 border-[#204879] pt-1 font-bold"><span>TOTAL GERAL EM ABERTO · {grupos.length} cliente(s)</span><span className="num">{moeda(totHon + totDes)}</span></div>
+    </div>
+  )
 }
