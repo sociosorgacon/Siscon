@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, todos, type Honorario, type Recibo, type Despesa } from '../lib/supabase'
 import { useApp, useDados, escritorioDe } from '../lib/app'
-import { chamarAsaas } from '../lib/asaas'
+import { chamarAsaas, abrirBoleto } from '../lib/asaas'
 import { moeda, data, ultimasCompetencias, compParaIso } from '../lib/format'
 import { Avatar, Cartao, LogoAsaas, Carregando, Vazio, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
@@ -167,6 +167,7 @@ const PAGO = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']
 
 /** Boletos do Asaas com vencimento no mês dos recebimentos da competência (alimentado pelos avisos do webhook) */
 function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: string })[] | null; erro: boolean; mes: string; v: (n: number) => string }) {
+  const avisar = useAviso()
   const hojeIso = new Date().toLocaleDateString('sv-SE')
   const [aba, setAba] = useState<'vencidos' | 'vencer' | 'pagos'>('vencer')
   const doMes = (lista || []).filter(x => x.vencimento?.startsWith(mes))
@@ -203,6 +204,8 @@ function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: str
                 <span className="min-w-0 flex-1"><span className="block truncate font-medium text-slate-700">{x.nome}</span>
                   <span className="block truncate text-xs text-slate-400">{aba === 'pagos' ? `pago em ${data(x.data_pagamento)}` : `vence ${data(x.vencimento)}`}{x.fatura ? ` · fatura ${x.fatura}` : ''}{x.descricao ? ` · ${x.descricao}` : ''}</span></span>
                 <span className={`num shrink-0 font-semibold ${blocos.find(b => b[0] === aba)![2]}`}>{moeda(Number(x.valor))}</span>
+                <button title="Abrir o boleto do Asaas (PDF)" className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-marca-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                  onClick={() => abrirBoleto({ id: x.payment_id, fatura: x.fatura, vencimento: x.vencimento }).catch(e => avisar((e as Error).message, 'erro'))}>Boleto</button>
               </li>))}
           </ul>}
       </>}

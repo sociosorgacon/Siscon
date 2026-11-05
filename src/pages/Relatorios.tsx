@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, todos, type Honorario, type Recibo, type Despesa } from '../lib/supabase'
 import { useApp, useDados, escritorioDe, pixDe } from '../lib/app'
 import { gerarExtratoPdf } from '../lib/extrato-pdf'
+import { abrirBoleto } from '../lib/asaas'
 import { gerarRelatorioDebitosPdf } from '../lib/relatorio-pdf'
 import { pixCopiaECola, qrPix } from '../lib/pix'
 import { moeda, data, comp, compParaIso, ultimasCompetencias, doc, normaliza } from '../lib/format'
@@ -79,6 +80,25 @@ export default function Relatorios() {
     hon: dados.hon.filter(h => h.saldo > 0.009), des: dados.des.filter(d => d.saldo > 0.009),
   }, [dados])
   // Mensal: tudo em aberto até a competência; Inadimplência: só competências anteriores (cliente com honorário atrasado)
+  // Boleto do Asaas em aberto de cada cliente (para o botão "Boleto Asaas" no cartão)
+  const boletosAsaas = useDados(async () => {
+    const [cob, cli] = await Promise.all([
+      todos<{ payment_id: string; customer_id: string | null; cpf_cnpj: string | null; vencimento: string; status: string; fatura: string | null }>((a, b) =>
+        supabase.from('asaas_cobrancas').select('payment_id, customer_id, cpf_cnpj, vencimento, status, fatura').in('status', ['PENDING', 'OVERDUE']).range(a, b)),
+      todos<{ id: string; cnpj: string | null; asaas_customer_id: string | null; boleto_cliente_id: string | null }>((a, b) =>
+        supabase.from('clientes').select('id, cnpj, asaas_customer_id, boleto_cliente_id').range(a, b)),
+    ])
+    const porId = new Map(cli.map(c => [c.id, c]))
+    // (devolve um objeto: useDados guarda o resultado num estado do React, que trataria uma função como atualizador)
+    return { achar: (clienteId: string) => {
+      const c = porId.get(porId.get(clienteId)?.boleto_cliente_id || clienteId); if (!c) return null
+      const doc = (c.cnpj || '').replace(/\D/g, '')
+      const meus = cob.filter(b => (c.asaas_customer_id && b.customer_id === c.asaas_customer_id) || (doc && b.cpf_cnpj === doc))
+      // o pendente mais próximo; se não houver, o vencido mais recente
+      return meus.filter(b => b.status === 'PENDING').sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0]
+        || meus.sort((a, b) => b.vencimento.localeCompare(a.vencimento))[0] || null
+    } }
+  })
   const gruposMensal = useMemo(() => !abertos ? [] : agrupar(abertos.hon.filter(h => h.competencia <= iso), abertos.des.filter(d => d.competencia <= iso)), [abertos, iso])
   const gruposInad = useMemo(() => !abertos ? [] : agrupar(abertos.hon.filter(h => h.competencia < iso), abertos.des.filter(d => d.competencia < iso)).filter(g => g.hon.length), [abertos, iso])
   const base = aba === 'inadimplencia' ? gruposInad : gruposMensal
@@ -256,7 +276,8 @@ export default function Relatorios() {
               </div>
 
               {visiveis.length === 0 ? <div className="rounded-xl bg-white shadow-sm"><Vazio texto="Nada em aberto." /></div> :
-                visiveis.map(g => <CartaoCliente key={g.id} g={g} whats={linkWhats(g, config.escritorio_nome, pix)} extrato={() => extrato(g)} />)}
+                visiveis.map(g => { const bol = boletosAsaas.dados?.achar(g.id); return <CartaoCliente key={g.id} g={g} whats={linkWhats(g, config.escritorio_nome, pix)} extrato={() => extrato(g)}
+                  boleto={bol ? () => abrirBoleto({ id: bol.payment_id, fatura: bol.fatura, vencimento: bol.vencimento }).catch(e => avisar((e as Error).message, 'erro')) : undefined} /> })}
 
               <div className="flex items-center justify-between rounded-xl bg-[#1b2a4a] px-5 py-2.5 text-white">
                 <span className="font-semibold uppercase tracking-wide">Total geral em aberto{sel ? ` (${visiveis.length} selecionados)` : ''}</span>
@@ -271,7 +292,7 @@ export default function Relatorios() {
   )
 }
 
-function CartaoCliente({ g, whats, extrato }: { g: Grupo; whats: string | null; extrato: () => void }) {
+function CartaoCliente({ g, whats, extrato, boleto }: { g: Grupo; whats: string | null; extrato: () => void; boleto?: () => void }) {
   return (
     <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-100 break-inside-avoid">
       <header className="flex flex-wrap items-center justify-between gap-2 bg-[#1b2a4a] px-4 py-2 text-white">
@@ -312,6 +333,7 @@ function CartaoCliente({ g, whats, extrato }: { g: Grupo; whats: string | null; 
           <span className="flex items-center gap-3">
             <span className="text-slate-600">Total a receber: <b className="num text-base text-slate-900">{moeda(g.total)}</b></span>
             <button onClick={extrato} className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50 print:hidden">Relação c/ Pix</button>
+            {boleto && <button onClick={boleto} title="Abrir o boleto em aberto no Asaas (PDF)" className="inline-flex items-center gap-1 rounded-md bg-white px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50 print:hidden"><img src="/asaas.png" alt="" className="h-3 w-3" />Boleto Asaas</button>}
             {whats && <a href={whats} target="_blank" rel="noreferrer" className="rounded-md bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 print:hidden">WhatsApp</a>}
           </span>
         </div>

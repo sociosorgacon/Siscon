@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Etapa 2 (mais rápida): só assinaturas ativas e boletos PENDENTES que ainda não venceram — sem lista de clientes
+    // Ajustes de boletos (mais rápido): só assinaturas ativas e boletos PENDENTES que ainda não venceram
     if (acao === 'ajustes') {
       const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
       const [assinaturas, pendentes] = await Promise.all([
@@ -119,7 +119,53 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Etapa 2: altera boletos PENDENTES (confere a situação no Asaas antes de alterar) — lista aprovada no Siscon
+    // Link do PDF de UM boleto (id "pay_..." ou, para boleto importado da planilha, nº da fatura + vencimento)
+    if (acao === 'boleto') {
+      const { id, fatura, vencimento } = corpoReq as { id?: string; fatura?: string; vencimento?: string }
+      let p: Obj | undefined
+      if (id && !id.startsWith('fatura:')) p = await asaasGet(`/payments/${encodeURIComponent(id)}`)
+      else if (fatura && vencimento) {
+        const lista = await asaasTodos(`/payments?dueDate%5Bge%5D=${vencimento}&dueDate%5Ble%5D=${vencimento}`) as Obj[]
+        p = lista.find(x => String(x.invoiceNumber) === String(fatura))
+      }
+      if (!p) return resposta({ erro: 'Boleto não encontrado no Asaas' }, 404)
+      return resposta({ id: p.id, boleto: p.bankSlipUrl || null, fatura: p.invoiceUrl || null })
+    }
+
+    // Lote do mês por GRUPO de clientes do Asaas (ex.: Impressos, Acessórias): boletos pendentes com vencimento no mês
+    if (acao === 'lote') {
+      const { grupo, mes } = corpoReq as { grupo: string; mes: string }   // mes = 'AAAA-MM'
+      if (!grupo || !/^\d{4}-\d{2}$/.test(mes || '')) return resposta({ erro: 'Informe o grupo e o mês' }, 400)
+      const [a, m] = mes.split('-').map(Number)
+      const ultimo = new Date(a, m, 0).getDate()
+      const [clientes, boletos] = await Promise.all([
+        asaasTodos(`/customers?groupName=${encodeURIComponent(grupo)}`),
+        asaasTodos(`/payments?status=PENDING&dueDate%5Bge%5D=${mes}-01&dueDate%5Ble%5D=${mes}-${String(ultimo).padStart(2, '0')}`),
+      ])
+      const doGrupo = new Map((clientes as Obj[]).map(c => [c.id, c]))
+      return resposta({
+        clientesNoGrupo: doGrupo.size,
+        boletos: (boletos as Obj[]).filter(p => doGrupo.has(p.customer) && p.bankSlipUrl).map(p => {
+          const c = doGrupo.get(p.customer)!
+          return { id: p.id, cliente_asaas: p.customer, nome: c.name || '', cpfCnpj: (c.cpfCnpj || '').replace(/\D/g, ''), valor: Number(p.value), vencimento: p.dueDate, boleto: p.bankSlipUrl }
+        }),
+      })
+    }
+
+    // Baixa o PDF de um boleto (só endereços do Asaas) e devolve em base64 — o navegador não pode baixar direto (CORS)
+    if (acao === 'pdf') {
+      const { url } = corpoReq as { url: string }
+      let u: URL
+      try { u = new URL(url) } catch { return resposta({ erro: 'Endereço inválido' }, 400) }
+      if (u.protocol !== 'https:' || !(u.hostname === 'asaas.com' || u.hostname.endsWith('.asaas.com'))) return resposta({ erro: 'Só boletos do Asaas' }, 400)
+      const r = await fetch(u.toString(), { headers: { 'User-Agent': 'Siscon-Orgacon' } })
+      if (!r.ok) return resposta({ erro: `Asaas respondeu ${r.status} ao baixar o boleto` }, 502)
+      const bytes = new Uint8Array(await r.arrayBuffer())
+      let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+      return resposta({ base64: btoa(bin), tipo: r.headers.get('content-type') || '' })
+    }
+
+    // Altera boletos PENDENTES (confere a situação no Asaas antes de alterar) — lista aprovada no Siscon
     if (acao === 'aplicar_boletos') {
       const { ajustes } = corpoReq as { ajustes: { id: string; valor: number; descricao: string }[] }
       const resultado = []
@@ -134,7 +180,7 @@ Deno.serve(async (req) => {
       return resposta({ resultado })
     }
 
-    // Etapa 2: valor da assinatura (vale para os próximos boletos; os já criados são ajustados pela lista de boletos)
+    // Valor da assinatura (vale para os próximos boletos; os já criados são ajustados pela lista de boletos)
     if (acao === 'aplicar_assinaturas') {
       const { ajustes } = corpoReq as { ajustes: { id: string; valor: number }[] }
       const resultado = []

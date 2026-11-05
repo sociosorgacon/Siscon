@@ -3,6 +3,7 @@ import { supabase, ok, todos, type Cliente, type Honorario, type Despesa } from 
 import { useApp, useDados } from '../lib/app'
 import { chamarAsaas, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/asaas'
 import AsaasAjustes, { limparCacheAjustes } from './AsaasAjustes'
+import AsaasLote from './AsaasLote'
 import { moeda, data, comp, doc, normaliza, compParaIso } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
 import { Avatar, Botao, Cabecalho, LogoAsaas, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
@@ -26,17 +27,17 @@ const COR_STATUS: Record<Evento['status'], string> = { processado: 'bg-emerald-5
 const ROTULO_STATUS: Record<Evento['status'], string> = { processado: 'Baixado', pendente: 'Conferir', erro: 'Erro', ignorado: 'Ignorado' }
 
 export default function Asaas() {
-  const [aba, setAba] = useState<'baixas' | 'conferencia' | 'ajustes'>('baixas')
+  const [aba, setAba] = useState<'baixas' | 'conferencia' | 'ajustes' | 'lote'>('baixas')
   useEffect(() => limparCacheAjustes, [])   // ao sair da página, a lista de ajustes volta a consultar o Asaas
   return (
     <>
-      <Cabecalho logo={<LogoAsaas className="h-7 w-7" />} titulo="Integração Asaas" subtitulo="Baixa automática dos boletos pagos, conferência e ajuste dos boletos" />
+      <Cabecalho logo={<LogoAsaas className="h-7 w-7" />} titulo="Integração Asaas" subtitulo="Baixa automática dos boletos pagos, conferência, ajuste e impressão dos boletos" />
       <div className="mb-5 inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
-        {([['baixas', 'Baixas automáticas', 'ok'], ['conferencia', 'Conferência de assinaturas', 'relatorios'], ['ajustes', 'Ajustes de boletos', 'editar']] as const).map(([k, t, ic]) => (
+        {([['baixas', 'Baixas automáticas', 'ok'], ['conferencia', 'Conferência de assinaturas', 'relatorios'], ['ajustes', 'Ajustes de boletos', 'editar'], ['lote', 'Boletos do mês (PDF/ZIP)', 'baixar']] as const).map(([k, t, ic]) => (
           <button key={k} onClick={() => setAba(k)} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${aba === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
             <Icone nome={ic} className={`h-4 w-4 ${aba === k ? 'text-blue-600' : ''}`} />{t}</button>))}
       </div>
-      {aba === 'baixas' ? <Baixas /> : aba === 'ajustes' ? <AsaasAjustes /> : <Conferencia />}
+      {aba === 'baixas' ? <Baixas /> : aba === 'ajustes' ? <AsaasAjustes /> : aba === 'lote' ? <AsaasLote /> : <Conferencia />}
     </>
   )
 }
