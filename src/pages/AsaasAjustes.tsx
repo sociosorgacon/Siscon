@@ -27,6 +27,7 @@ const linha = (texto: string, valor: number) => `${texto} - ${valor.toLocaleStri
 type Dados = { assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[]; cli: Cliente[]; hon: Honorario[]; des: DespesaB[]; fixas: Fixa[]; sal: SalarioMinimo[] }
 let cache: { t: number; desde: string; dados: Dados } | null = null
 const forcar = { atual: false }
+const tentados = new Set<string>()   // clientes do Asaas já procurados nesta sessão (evita repetir a consulta lenta)
 /** Ao sair da página Integração Asaas o cache é descartado: ao voltar (ex.: depois de lançar despesas), consulta de novo */
 export const limparCacheAjustes = () => { cache = null }
 
@@ -53,6 +54,23 @@ export default function AsaasAjustes() {
       todos<{ customer_id: string; cpf_cnpj: string }>((a, b) => supabase.from('asaas_cobrancas').select('customer_id, cpf_cnpj').not('customer_id', 'is', null).not('cpf_cnpj', 'is', null).range(a, b)),
     ])
     const docDe = new Map(docs.map(d => [d.customer_id, d.cpf_cnpj]))
+    // Clientes do Asaas ainda sem vínculo no Siscon: busca o CPF/CNPJ deles UMA vez (consulta completa, mais lenta)
+    // e grava o vínculo (asaas_customer_id) quando só um cliente do Siscon tem aquele documento. Depois disso fica rápido.
+    const vinculados = new Set(cli.map(c => c.asaas_customer_id).filter(Boolean))
+    const semVinculo = [...new Set([...asaas.cobrancas, ...asaas.assinaturas].map(x => x.cliente_asaas))]
+      .filter(id => id && !vinculados.has(id) && !docDe.has(id) && !tentados.has(id))
+    if (semVinculo.length) {
+      semVinculo.forEach(id => tentados.add(id))
+      const conf = await chamarAsaas<{ assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[] }>('conferencia')
+      const docCus = new Map([...conf.assinaturas, ...conf.cobrancas].filter(x => x.cpfCnpj).map(x => [x.cliente_asaas, x.cpfCnpj]))
+      for (const cus of semVinculo) {
+        const d = docCus.get(cus); if (!d) continue
+        const cands = cli.filter(c => dig(c.cnpj) === d && !c.asaas_customer_id)
+        if (cands.length !== 1) { docDe.set(cus, d); continue }
+        const { error } = await supabase.from('clientes').update({ asaas_customer_id: cus }).eq('id', cands[0].id).is('asaas_customer_id', null)
+        if (!error) cands[0].asaas_customer_id = cus; else docDe.set(cus, d)
+      }
+    }
     const comDoc = <T extends { cliente_asaas: string; cpfCnpj: string }>(x: T) => ({ ...x, cpfCnpj: x.cpfCnpj || docDe.get(x.cliente_asaas) || '' })
     const r = { assinaturas: asaas.assinaturas.map(comDoc), cobrancas: asaas.cobrancas.map(comDoc), cli, hon, des, fixas, sal }
     cache = { t: Date.now(), desde, dados: r }
@@ -121,6 +139,7 @@ export default function AsaasAjustes() {
       const mudouDesc = extras.some(d => !semAcento((p.descricao || '') + ' ' + descAss).includes(semAcento(d.descricao)))
       if (!mudouValor && !mudouDesc) continue
       if (novo <= 0) avisos.push('valor ficaria zerado: confira e, se for o caso, cancele o boleto no Asaas')
+      else if (novo < p.valor - 0.009) avisos.push(`valor menor que o atual no Asaas (${moeda(p.valor)}): o boleto pode incluir débito de outro mês colocado à mão`)
       propostas.push({ id: p.id, cliente: c, vencimento: p.vencimento, comp: C, atual: p.valor, novo, descAtual: p.descricao || '', descNova, itens, avisos })
     }
     propostas.sort((a, b) => a.vencimento.localeCompare(b.vencimento) || a.cliente.razao_social.localeCompare(b.cliente.razao_social))
