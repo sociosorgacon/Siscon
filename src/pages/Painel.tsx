@@ -205,7 +205,7 @@ function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: str
                   <span className="block truncate text-xs text-slate-400">{aba === 'pagos' ? `pago em ${data(x.data_pagamento)}` : `vence ${data(x.vencimento)}`}{x.fatura ? ` · fatura ${x.fatura}` : ''}{x.descricao ? ` · ${x.descricao}` : ''}</span></span>
                 <span className={`num shrink-0 font-semibold ${blocos.find(b => b[0] === aba)![2]}`}>{moeda(Number(x.valor))}</span>
                 <button title="Abrir o boleto do Asaas (PDF)" className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-marca-700 ring-1 ring-slate-200 hover:bg-slate-50"
-                  onClick={() => abrirBoleto({ id: x.payment_id, fatura: x.fatura, vencimento: x.vencimento }).catch(e => avisar((e as Error).message, 'erro'))}>Boleto</button>
+                  onClick={() => abrirBoleto({ id: x.payment_id, fatura: x.fatura, vencimento: x.vencimento }).catch(e => avisar((e as Error).message, 'erro'))}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Boleto</span></button>
               </li>))}
           </ul>}
       </>}

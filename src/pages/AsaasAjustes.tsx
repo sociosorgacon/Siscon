@@ -3,7 +3,7 @@ import { supabase, ok, todos, type Cliente, type Honorario, type Despesa } from 
 import { useApp, useDados, salarioPara, type SalarioMinimo } from '../lib/app'
 import { chamarAsaas, abrirBoleto, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/asaas'
 import { moeda, data, comp, compParaIso } from '../lib/format'
-import { Avatar, Botao, Cartao, Carregando, Resumo, Vazio, useAviso } from '../components/ui'
+import { Avatar, Botao, Cartao, Carregando, LogoAsaas, Resumo, Vazio, useAviso } from '../components/ui'
 import { Aviso } from './Asaas'
 
 /**
@@ -236,7 +236,7 @@ export default function AsaasAjustes() {
                   <pre className="whitespace-pre-wrap rounded-md bg-slate-50 px-2.5 py-1.5 font-sans text-xs text-slate-500"><span className="block text-[10px] font-semibold uppercase text-slate-400">Hoje no Asaas</span>{p.descAtual || '—'}</pre>
                   <pre className="whitespace-pre-wrap rounded-md bg-blue-50 px-2.5 py-1.5 font-sans text-xs text-slate-700"><span className="block text-[10px] font-semibold uppercase text-blue-500">Vai ficar</span>{p.descNova || '—'}<span className="mt-0.5 block text-[10px] text-slate-400">+ descrição da assinatura (o Asaas acrescenta)</span></pre>
                 </div>
-                <div className="mt-1 flex gap-4"><button className="text-xs font-medium text-marca-700 hover:underline" onClick={() => abrirBoleto({ id: p.id }).catch(e => avisar((e as Error).message, 'erro'))}>Ver boleto (PDF)</button>
+                <div className="mt-1 flex gap-4"><button className="text-xs font-medium text-marca-700 hover:underline" onClick={() => abrirBoleto({ id: p.id }).catch(e => avisar((e as Error).message, 'erro'))}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Ver boleto (PDF)</span></button>
                 {p.itens.some(i => i.despesa) && <button className="text-xs text-slate-500 hover:text-red-600 hover:underline" onClick={() => ignorar(p)}>Não cobrar estas despesas pelo Asaas</button>}</div>
                 {p.avisos.map(a => <p key={a} className="mt-1 text-xs font-medium text-amber-700">⚠ {a} (desmarcado; marque se estiver certo)</p>)}
               </div>

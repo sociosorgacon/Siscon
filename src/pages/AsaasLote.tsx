@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useApp } from '../lib/app'
 import { chamarAsaas, abrirBoleto } from '../lib/asaas'
 import { moeda, data } from '../lib/format'
-import { Botao, Cartao, Vazio, useAviso } from '../components/ui'
+import { Botao, Cartao, LogoAsaas, Vazio, useAviso } from '../components/ui'
 
 /**
  * Boletos do mês por GRUPO do Asaas (definido no cadastro do cliente no Asaas):
@@ -113,7 +113,7 @@ export default function AsaasLote() {
                 <span className="min-w-0 flex-1 truncate text-slate-700">{b.nome}</span>
                 <span className="text-xs text-slate-400">vence {data(b.vencimento)}</span>
                 <span className="num w-24 text-right">{moeda(b.valor)}</span>
-                <button className="text-xs text-marca-700 hover:underline" onClick={() => abrirBoleto({ id: b.id }).catch(e => avisar((e as Error).message, 'erro'))}>Boleto</button>
+                <button className="text-xs text-marca-700 hover:underline" onClick={() => abrirBoleto({ id: b.id }).catch(e => avisar((e as Error).message, 'erro'))}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Boleto</span></button>
               </li>)}
             </ul>
           </>}
