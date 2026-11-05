@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/app'
 import { Icone, type NomeIcone } from './icones'
+import { LogoAsaas } from './ui'
 
 const secoes: { titulo: string; itens: [string, string, NomeIcone][] }[] = [
   { titulo: 'Visão geral', itens: [['/', 'Painel', 'painel']] },
@@ -49,7 +50,7 @@ export default function Layout() {
                   className={({ isActive }) => `group mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${isActive
                     ? 'bg-blue-600 font-medium text-white shadow-sm shadow-black/20'
                     : 'text-white/75 hover:bg-white/10 hover:text-white'}`}>
-                  {({ isActive }) => <><Icone nome={icone} className={`h-[18px] w-[18px] ${isActive ? 'text-white' : 'text-white/60 group-hover:text-white'}`} />{nome}</>}
+                  {({ isActive }) => <>{to === '/asaas' ? <LogoAsaas fundo className="h-[14px] w-[14px]" /> : <Icone nome={icone} className={`h-[18px] w-[18px] ${isActive ? 'text-white' : 'text-white/60 group-hover:text-white'}`} />}{nome}</>}
                 </NavLink>
               ))}
             </div>

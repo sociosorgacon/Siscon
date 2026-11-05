@@ -26,11 +26,12 @@ export function Cartao({ titulo, acoes, children, className = '' }: { titulo?: R
   )
 }
 
-export function Cabecalho({ titulo, subtitulo, acoes, icone }: { titulo: string; subtitulo?: ReactNode; acoes?: ReactNode; icone?: NomeIcone }) {
+export function Cabecalho({ titulo, subtitulo, acoes, icone, logo }: { titulo: string; subtitulo?: ReactNode; acoes?: ReactNode; icone?: NomeIcone; logo?: ReactNode }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="flex items-center gap-3">
-        {icone && <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#1c3260] to-[#2563eb] text-white shadow-sm shadow-blue-900/20"><Icone nome={icone} className="h-5 w-5" /></span>}
+        {logo && <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-slate-200">{logo}</span>}
+        {icone && !logo && <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#1c3260] to-[#2563eb] text-white shadow-sm shadow-blue-900/20"><Icone nome={icone} className="h-5 w-5" /></span>}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{titulo}</h1>
           {subtitulo && <p className="mt-0.5 text-sm text-slate-500">{subtitulo}</p>}
@@ -190,4 +191,10 @@ export function Avatar({ nome }: { nome: string }) {
   const ini = ((p[0]?.[0] || nome[0] || '?') + (p[1]?.[0] || '')).toUpperCase()
   let h = 0; for (const ch of nome) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   return <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${coresAvatar[h % coresAvatar.length]}`}>{ini}</span>
+}
+
+/** Logo do Asaas (asas) — só ao lado do nome "Asaas". Em fundo escuro, vai num quadrinho branco. */
+export function LogoAsaas({ className = 'h-4 w-4', fundo = false }: { className?: string; fundo?: boolean }) {
+  const img = <img src="/asaas.png" alt="" aria-hidden="true" className={`${className} shrink-0 object-contain`} />
+  return fundo ? <span className="inline-flex shrink-0 items-center justify-center rounded bg-white p-0.5">{img}</span> : img
 }

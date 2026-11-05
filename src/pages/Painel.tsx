@@ -4,7 +4,7 @@ import { supabase, todos, type Honorario, type Recibo, type Despesa } from '../l
 import { useApp, useDados, escritorioDe } from '../lib/app'
 import { chamarAsaas } from '../lib/asaas'
 import { moeda, data, ultimasCompetencias, compParaIso } from '../lib/format'
-import { Avatar, Cartao, Carregando, Vazio, useAviso } from '../components/ui'
+import { Avatar, Cartao, LogoAsaas, Carregando, Vazio, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
 import { baixarBackup } from '../lib/backup'
 import { imprimirRecibo } from '../lib/recibo-pdf'
@@ -100,7 +100,7 @@ export default function Painel() {
             className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium ring-1 ring-white/25 hover:bg-white/20">
             <Icone nome={oculto ? 'olho' : 'olhoFechado'} className="h-3.5 w-3.5" />{oculto ? 'Mostrar valores' : 'Ocultar valores'}</button>
           {asaas.dados && <Link to="/asaas" className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/80 ring-1 ring-white/20 hover:bg-white/15">
-            Saldo Asaas <b className="ml-1 text-sm font-semibold text-white">{moeda(asaas.dados.saldo)}</b></Link>}
+            <span className="inline-flex items-center gap-1.5"><LogoAsaas fundo className="h-3 w-3" />Saldo Asaas</span> <b className="ml-1 text-sm font-semibold text-white">{moeda(asaas.dados.saldo)}</b></Link>}
           <button onClick={backup} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium ring-1 ring-white/25 hover:bg-white/20">
             <Icone nome="baixar" className="h-3.5 w-3.5" /> Backup</button>
           <span className="rounded-lg bg-white px-3 py-1.5"><img src="/logo.png" alt="Orgacon" className="h-9" /></span>
@@ -184,7 +184,7 @@ function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: str
   ] as const
   const sel = grupos[aba]
   return (
-    <Cartao titulo={<span className="inline-flex items-center gap-2"><Icone nome="receber" className="h-4 w-4 text-blue-600" />Boletos Asaas · vencimento {m}/{a}</span>}
+    <Cartao titulo={<span className="inline-flex items-center gap-2"><LogoAsaas />Boletos Asaas · vencimento {m}/{a}</span>}
       acoes={<Link to="/asaas" className="text-sm text-marca-700 hover:underline">Integração</Link>}>
       {erro ? <Vazio texto="Situação dos boletos ainda não instalada (falta rodar o script 008 no Supabase)." /> : <>
         <div className="grid grid-cols-3 gap-2 px-5 pt-4">

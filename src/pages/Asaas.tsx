@@ -6,7 +6,7 @@ import AsaasExtrato from './AsaasExtrato'
 import AsaasAjustes from './AsaasAjustes'
 import { moeda, data, comp, doc, normaliza, compParaIso } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
-import { Avatar, Botao, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
+import { Avatar, Botao, Cabecalho, LogoAsaas, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
 
 const dig = (s: string | null | undefined) => (s || '').replace(/\D/g, '')
@@ -30,7 +30,7 @@ export default function Asaas() {
   const [aba, setAba] = useState<'baixas' | 'extrato' | 'conferencia' | 'ajustes'>('baixas')
   return (
     <>
-      <Cabecalho icone="receber" titulo="Integração Asaas" subtitulo="Baixa automática dos boletos pagos, importação do extrato, conferência e ajuste dos boletos" />
+      <Cabecalho logo={<LogoAsaas className="h-7 w-7" />} titulo="Integração Asaas" subtitulo="Baixa automática dos boletos pagos, importação do extrato, conferência e ajuste dos boletos" />
       <div className="mb-5 inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
         {([['baixas', 'Baixas automáticas', 'ok'], ['extrato', 'Importar extrato (OFX)', 'baixar'], ['conferencia', 'Conferência de assinaturas', 'relatorios'], ['ajustes', 'Ajustes de boletos', 'editar']] as const).map(([k, t, ic]) => (
           <button key={k} onClick={() => setAba(k)} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${aba === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
