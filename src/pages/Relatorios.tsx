@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, todos, type Honorario, type Recibo, type Despesa } from '../lib/supabase'
 import { useApp, useDados, escritorioDe, pixDe } from '../lib/app'
 import { gerarExtratoPdf } from '../lib/extrato-pdf'
+import { gerarRelatorioDebitosPdf } from '../lib/relatorio-pdf'
 import { pixCopiaECola, qrPix } from '../lib/pix'
 import { moeda, data, comp, compParaIso, ultimasCompetencias, doc, normaliza } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
@@ -133,6 +134,17 @@ export default function Relatorios() {
     return [...m.values()].sort((a, b) => b.comp.localeCompare(a.comp)).slice(0, 12)
   }, [dados])
 
+  /** PDF compacto dos débitos (aba atual e clientes selecionados): uma linha por cliente, para imprimir poucas folhas */
+  async function pdfCompleto() {
+    try {
+      await gerarRelatorioDebitosPdf({
+        titulo: aba === 'inadimplencia' ? 'INADIMPLÊNCIA' : 'DÉBITOS EM ABERTO',
+        subtitulo: aba === 'inadimplencia' ? `Competências anteriores a ${c}` : `Até a competência ${c}`,
+        grupos: visiveis,
+      }, escritorioDe(config))
+    } catch (e) { avisar('Erro ao gerar o PDF: ' + (e as Error).message, 'erro') }
+  }
+
   async function exportar() {
     const linhasAberto = (gs: Grupo[]) => gs.flatMap(g => [
       ...g.hon.map(h => ({ cliente: g.cliente, cnpj: doc(g.cnpj), tipo: 'Honorário', descricao: 'Honorários', comp: comp(h.competencia), venc: h.vencimento, original: h.valor_original + h.juros_calc, pago: h.valor_pago_acumulado, saldo: h.saldo, status: h.situacao })),
@@ -174,8 +186,10 @@ export default function Relatorios() {
       <div className="print:hidden">
         <Cabecalho icone="relatorios" titulo="Relatórios" subtitulo="Débitos em aberto, inadimplência e recebimentos, com Pix, WhatsApp, Excel e impressão"
           acoes={<>
-            <button onClick={exportar} disabled={!dados} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50">
-              <Icone nome="baixar" className="h-4 w-4" /> Relatório completo (Excel)</button>
+            <button onClick={pdfCompleto} disabled={!dados || aba === 'financeiro'} title={aba === 'financeiro' ? 'Disponível nas abas Relatório Mensal e Inadimplência' : 'Uma linha por cliente, para imprimir poucas folhas'}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50">
+              <Icone nome="baixar" className="h-4 w-4" /> Relatório completo (PDF)</button>
+            <button onClick={exportar} disabled={!dados} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-50">Excel</button>
             <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#204879] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#1b3d68]">
               <Icone nome="recibos" className="h-4 w-4" /> Imprimir / PDF</button>
           </>} />
