@@ -266,7 +266,7 @@ export default function Relatorios() {
             </div>
 
             {aba === 'financeiro' ? <Financeiro fin={fin} porComp={porComp} c={c} pRec={pRec} /> : <>
-              <ImpressaoDebitos grupos={visiveis} titulo={aba === 'inadimplencia' ? `Inadimplência — competências anteriores a ${c}` : `Relatório Mensal — débitos até a competência ${c}`}
+              <ImpressaoDebitos grupos={visiveis} titulo={aba === 'inadimplencia' ? `Inadimplência — Competências anteriores a ${c}` : `Débitos em Aberto — Competência ${c}`}
                 escritorio={config.escritorio_nome} qr={qr} chave={doc(pix.chave)} />
               <div className="print:hidden space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -398,43 +398,38 @@ function Financeiro({ fin, porComp, c, pRec }: { fin: Fin; porComp: { comp: stri
 
 /**
  * Versão de IMPRESSÃO (Imprimir/PDF) das abas Relatório Mensal e Inadimplência — só aparece no papel.
- * Compacta: cabeçalho com logo e Pix pequeno, uma faixa por cliente (nome, CNPJ, total) e uma linha por
- * honorário e por despesa (como na tela), letra pequena e sem botões, para caber em menos folhas.
+ * Modelo do relatório do Base44 (pedido do usuário, 05/11/2026): logo e Pix centralizados, título, tabela com
+ * cabeçalho azul-escuro (Comp. | Descrição | Vencimento | Valor), faixa cinza por cliente (nome + CNPJ),
+ * uma linha por honorário ("Honorário Contábil", valor com juros) e por despesa (valor em laranja),
+ * linha "Subtotal" por cliente e faixa azul-escura "TOTAL GERAL EM ABERTO".
  */
-function ImpressaoDebitos({ grupos, titulo, escritorio, qr, chave }: { grupos: Grupo[]; titulo: string; escritorio: string; qr: string; chave: string }) {
-  const totHon = grupos.reduce((s, g) => s + g.totHon, 0), totDes = grupos.reduce((s, g) => s + g.totDes, 0)
-  const agora = new Date()
+function ImpressaoDebitos({ grupos, titulo, qr }: { grupos: Grupo[]; titulo: string; escritorio: string; qr: string; chave: string }) {
+  const total = grupos.reduce((s, g) => s + g.total, 0)
+  const docSo = (d: string) => (d || '').replace(/\D/g, '')
   return (
-    <div className="hidden text-[8.5pt] leading-[1.35] text-slate-900 print:block [&_tbody_td]:py-[2px]">
-      <header className="mb-2 flex items-center gap-4 border-b-2 border-[#204879] pb-2">
-        <img src="/logo.png" alt="" className="h-9" />
-        <div className="flex-1">
-          <p className="text-[11pt] font-bold text-[#204879]">{titulo}</p>
-          <p className="text-[7.5pt] text-slate-500">{escritorio} · emitido em {agora.toLocaleDateString('pt-BR')} às {agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · valores de honorários já com juros</p>
-        </div>
-        {qr && <div className="flex items-center gap-2 text-right"><div><p className="text-[8pt] font-bold text-[#204879]">PIX</p><p className="text-[7pt] text-slate-600">Chave {chave}</p></div><img src={qr} alt="" className="h-14 w-14" /></div>}
-      </header>
-      <p className="mb-2 text-[8pt] text-slate-600">{grupos.length} cliente(s) · Honorários <b className="num">{moeda(totHon)}</b> · Despesas extras <b className="num">{moeda(totDes)}</b> · <b>Total em aberto <span className="num">{moeda(totHon + totDes)}</span></b></p>
+    <div className="hidden text-[8pt] leading-[1.25] text-slate-800 print:block [&_*]:[print-color-adjust:exact]">
+      <div className="mb-3 flex flex-col items-center">
+        <div className="flex items-center gap-2"><img src="/logo.png" alt="" className="h-8" />{qr && <img src={qr} alt="" className="h-12 w-12" />}</div>
+        <p className="mt-2 text-[12pt] font-bold text-[#1b2a4a]">{titulo}</p>
+      </div>
       <table className="w-full border-collapse">
-        <thead><tr className="border-b border-slate-400 text-left text-[7pt] uppercase text-slate-500">
-          <th className="py-0.5 font-semibold">Descrição</th><th className="font-semibold">Compet.</th>
-          <th className="text-right font-semibold">Valor</th><th className="text-right font-semibold">Pago</th><th className="text-right font-semibold">Saldo</th><th className="pl-2 font-semibold">Situação</th></tr></thead>
+        <thead><tr className="bg-[#1b2a4a] text-left text-[8pt] text-white">
+          <th className="w-[13%] px-2 py-1.5 font-semibold">Comp.</th><th className="px-2 font-semibold">Descrição</th>
+          <th className="w-[16%] px-2 text-right font-semibold">Vencimento</th><th className="w-[16%] px-2 text-right font-semibold">Valor</th></tr></thead>
         {grupos.map(g => (
-          <tbody key={g.id} className="break-inside-avoid border-t-[6px] border-white">
-            <tr className="bg-slate-100 [print-color-adjust:exact]"><td colSpan={4} className="px-1.5 !py-1 font-bold">{g.cliente} <span className="font-normal text-slate-500">{g.cnpj ? doc(g.cnpj) : ''}</span></td>
-              <td className="num px-1.5 !py-1 text-right font-bold">{moeda(g.total)}</td><td /></tr>
-            {g.hon.map(h => <tr key={h.id} className="border-b border-slate-100">
-              <td className="pl-3">Honorários</td><td className="num">{comp(h.competencia)}</td>
-              <td className="num text-right">{moeda(h.valor_original + h.juros_calc)}</td><td className="num text-right">{h.valor_pago_acumulado ? moeda(h.valor_pago_acumulado) : '—'}</td>
-              <td className="num text-right font-semibold">{moeda(h.saldo)}</td><td className="pl-2 text-[7.5pt]">{h.situacao}</td></tr>)}
-            {g.des.map(d => <tr key={d.id} className="border-b border-slate-100">
-              <td className="pl-3">{d.descricao}</td><td className="num">{comp(d.competencia)}</td>
-              <td className="num text-right">{moeda(d.valor)}</td><td className="num text-right">{d.valor_pago ? moeda(d.valor_pago) : '—'}</td>
-              <td className="num text-right font-semibold">{moeda(d.saldo)}</td><td className="pl-2 text-[7.5pt]">Despesa extra</td></tr>)}
+          <tbody key={g.id} className="break-inside-avoid">
+            <tr className="bg-slate-200"><td colSpan={4} className="px-2 py-[3px] font-bold text-[#1b2a4a]">{g.cliente}{g.cnpj && <span className="ml-2 text-[7.5pt] font-normal text-slate-500">CNPJ: {docSo(g.cnpj)}</span>}</td></tr>
+            {g.hon.map((h, i) => <tr key={h.id} className={`border-b border-slate-200 ${i % 2 ? 'bg-slate-50' : ''}`}>
+              <td className="num px-2 py-[1.5px]">{comp(h.competencia)}</td><td className="px-2">Honorário Contábil</td>
+              <td className="num px-2 text-right">{data(h.vencimento)}</td><td className="num px-2 text-right font-medium">{moeda(h.saldo)}</td></tr>)}
+            {g.des.map(d => <tr key={d.id} className="border-b border-slate-200">
+              <td className="num px-2 py-[1.5px]">{comp(d.competencia)}</td><td className="px-2">{d.descricao}</td>
+              <td className="num px-2 text-right">{data(d.data)}</td><td className="num px-2 text-right font-medium text-orange-700">{moeda(d.saldo)}</td></tr>)}
+            <tr className="bg-blue-50"><td colSpan={3} className="px-2 py-[2px] text-right text-slate-600">Subtotal:</td><td className="num px-2 text-right font-bold text-[#1b2a4a]">{moeda(g.total)}</td></tr>
           </tbody>))}
+        <tfoot><tr className="bg-[#1b2a4a] text-white"><td colSpan={3} className="px-2 py-2 text-[10pt] font-bold">TOTAL GERAL EM ABERTO</td>
+          <td className="num px-2 text-right text-[11pt] font-bold">{moeda(total)}</td></tr></tfoot>
       </table>
-      {/* fora do <tfoot> para não repetir em todas as folhas */}
-      <div className="mt-1 flex justify-between border-t-2 border-[#204879] pt-1 font-bold"><span>TOTAL GERAL EM ABERTO · {grupos.length} cliente(s)</span><span className="num">{moeda(totHon + totDes)}</span></div>
     </div>
   )
 }
