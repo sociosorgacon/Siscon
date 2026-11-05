@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { supabase, ok, todos, type Cliente } from '../lib/supabase'
+import { chamarAsaas } from '../lib/asaas'
 import { useApp, useDados } from '../lib/app'
 import { moeda, doc, normaliza } from '../lib/format'
-import { Avatar, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
+import { Avatar, Botao, Busca, GrupoAsaas, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone } from '../components/icones'
 
 const novo = (): Partial<Cliente> => ({ status: 'Ativo', percentual_honorario: 0, dia_vencimento: 10, multa_por_atraso: true, gera_fechamento: true })
@@ -17,6 +18,30 @@ export default function Clientes() {
   const { dados, recarregar } = useDados(() =>
     todos<Cliente>((a, b) => supabase.from('clientes').select('*').order('razao_social').range(a, b)))
 
+  // Grupo de cada cliente no Asaas (Impressos, Acessórias, WhatsApp): o Asaas é o dono; aqui só lemos e mostramos
+  const [lendoGrupos, setLendoGrupos] = useState(false)
+  async function atualizarGrupos() {
+    if (!dados) return
+    setLendoGrupos(true)
+    try {
+      const { clientes } = await chamarAsaas<{ clientes: { cliente_asaas: string; cpfCnpj: string; grupo: string }[] }>('grupos', { nomes: ['Impressos', 'Acessórias', 'WhatsApp'] })
+      const grupoDe = new Map<string, string>()
+      for (const c of dados) {
+        const pag = (c.boleto_cliente_id && dados.find(x => x.id === c.boleto_cliente_id)) || c   // quem vai no boleto de outro herda o grupo dele
+        const d = (pag.cnpj || '').replace(/\D/g, '')
+        const g = clientes.find(x => (pag.asaas_customer_id && x.cliente_asaas === pag.asaas_customer_id) || (d && x.cpfCnpj === d))
+        if (g) grupoDe.set(c.id, g.grupo)
+      }
+      const mudar = dados.filter(c => (grupoDe.get(c.id) || null) !== (c.asaas_grupo || null))
+      for (const g of [...new Set(mudar.map(c => grupoDe.get(c.id) || null))]) {
+        const ids = mudar.filter(c => (grupoDe.get(c.id) || null) === g).map(c => c.id)
+        ok(await supabase.from('clientes').update({ asaas_grupo: g }).in('id', ids))
+      }
+      avisar(`Grupos lidos do Asaas: ${grupoDe.size} cliente(s) em grupo; ${mudar.length} atualizado(s).`)
+      recarregar()
+    } catch (e) { avisar((e as Error).message, 'erro') } finally { setLendoGrupos(false) }
+  }
+
   const lista = useMemo(() => (dados || []).filter(c =>
     (!filtro || c.status === filtro) &&
     (!busca || normaliza(`${c.razao_social} ${c.nome_fantasia || ''} ${c.cnpj}`).includes(normaliza(busca)))), [dados, busca, filtro])
@@ -26,7 +51,9 @@ export default function Clientes() {
   return (
     <>
       <Cabecalho icone="clientes" titulo="Clientes" subtitulo="Cadastro, percentual do salário mínimo e dia de vencimento"
-        acoes={<Botao onClick={() => setEdit(novo())}>Novo cliente</Botao>} />
+        acoes={<>
+          <Botao variante="secundario" onClick={atualizarGrupos} disabled={!dados || lendoGrupos}>{lendoGrupos ? 'Lendo o Asaas…' : 'Atualizar grupos do Asaas'}</Botao>
+          <Botao onClick={() => setEdit(novo())}>Novo cliente</Botao></>} />
       {dados && (() => {
         const ativos = dados.filter(c => c.status === 'Ativo'), mensal = ativos.reduce((s, c) => s + sm * c.percentual_honorario / 100, 0)
         return <Resumo itens={[
@@ -51,7 +78,7 @@ export default function Clientes() {
               <tbody>{lista.map(c => (
                 <tr key={c.id}>
                   <td className="max-w-[20rem]" title={c.razao_social}><span className="flex items-center gap-2.5"><Avatar nome={c.razao_social} />
-                    <span className="min-w-0"><span className="block truncate font-medium text-slate-800">{c.razao_social}</span>{c.nome_fantasia && <span className="block truncate text-[11px] text-slate-400">{c.nome_fantasia}</span>}</span></span></td>
+                    <span className="min-w-0"><span className="flex items-center gap-1.5"><span className="truncate font-medium text-slate-800">{c.razao_social}</span><GrupoAsaas grupo={c.asaas_grupo} /></span>{c.nome_fantasia && <span className="block truncate text-[11px] text-slate-400">{c.nome_fantasia}</span>}</span></span></td>
                   <td className="num">{doc(c.cnpj)}</td>
                   <td>{c.municipio ? `${c.municipio}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
                   <td className="num text-right">{c.percentual_honorario.toLocaleString('pt-BR')}%</td>
@@ -148,6 +175,8 @@ function FormCliente({ cliente, sm, todos: todosClientes, fechar, salvo }: { cli
             </select>
             <span className="mt-0.5 block text-xs text-slate-500">Ex.: doméstica cobrada no boleto da empresa. A baixa e os ajustes do boleto do pagador passam a incluir os débitos deste cliente.</span>
           </label>
+          <p className="col-span-6 flex items-center gap-2 text-sm text-slate-600">Grupo no Asaas: {c.asaas_grupo ? <GrupoAsaas grupo={c.asaas_grupo} /> : <span className="text-slate-400">nenhum</span>}
+            <span className="text-xs text-slate-400">(definido no cadastro do cliente no Asaas; atualize pelo botão "Atualizar grupos do Asaas")</span></p>
         </div>
 
         <div className="col-span-6 mt-2 flex justify-end gap-2">

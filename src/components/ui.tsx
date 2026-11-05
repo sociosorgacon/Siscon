@@ -198,3 +198,11 @@ export function LogoAsaas({ className = 'h-4 w-4', fundo = false }: { className?
   const img = <img src="/asaas.png" alt="" aria-hidden="true" className={`${className} shrink-0 object-contain`} />
   return fundo ? <span className="inline-flex shrink-0 items-center justify-center rounded bg-white p-0.5">{img}</span> : img
 }
+
+/** Etiqueta do grupo do cliente no Asaas (lido do Asaas; o Siscon não edita) */
+const coresGrupo: Record<string, string> = { Impressos: 'bg-blue-50 text-blue-700 ring-blue-200', 'Acessórias': 'bg-emerald-50 text-emerald-700 ring-emerald-200', WhatsApp: 'bg-green-50 text-green-700 ring-green-200' }
+export function GrupoAsaas({ grupo }: { grupo?: string | null }) {
+  if (!grupo) return null
+  return <span title="Grupo do cliente no Asaas" className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10px] font-medium ring-1 ring-inset ${coresGrupo[grupo] || 'bg-slate-100 text-slate-600 ring-slate-200'}`}>
+    <img src="/asaas.png" alt="" className="h-2.5 w-2.5" />{grupo}</span>
+}

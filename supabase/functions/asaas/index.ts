@@ -165,6 +165,15 @@ Deno.serve(async (req) => {
       return resposta({ base64: btoa(bin), tipo: r.headers.get('content-type') || '' })
     }
 
+    // Grupos de clientes do Asaas (Impressos, Acessórias, WhatsApp...): quem está em cada um, para mostrar no Siscon
+    if (acao === 'grupos') {
+      const { nomes } = corpoReq as { nomes: string[] }
+      const listas = await Promise.all((nomes || []).map(g => asaasTodos(`/customers?groupName=${encodeURIComponent(g)}`)))
+      return resposta({
+        clientes: listas.flatMap((l, i) => (l as Obj[]).map(c => ({ cliente_asaas: c.id, cpfCnpj: (c.cpfCnpj || '').replace(/\D/g, ''), grupo: nomes[i] }))),
+      })
+    }
+
     // Altera boletos PENDENTES (confere a situação no Asaas antes de alterar) — lista aprovada no Siscon
     if (acao === 'aplicar_boletos') {
       const { ajustes } = corpoReq as { ajustes: { id: string; valor: number; descricao: string }[] }
