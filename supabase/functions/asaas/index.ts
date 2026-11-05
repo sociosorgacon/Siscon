@@ -1,5 +1,6 @@
 // Siscon — integração com o Asaas (Edge Function do Supabase)
-// Etapa 1: SOMENTE LEITURA — saldo da conta e conferência de assinaturas/boletos em aberto.
+// Etapa 1: leitura — saldo da conta e conferência de assinaturas/boletos em aberto.
+// Etapa 2: ajustes aprovados pelo usuário — valor/descrição de boleto PENDENTE e valor da assinatura.
 //
 // Secrets (Supabase → Edge Functions → Secrets):
 //   ASAAS_API_KEY   chave da API do Asaas (obrigatória; nunca vai para o front nem para o Git)
@@ -40,8 +41,9 @@ async function origem() {
   } catch { return `região Supabase ${Deno.env.get('SB_REGION') || '?'}` }
 }
 
-async function asaasGet(caminho: string) {
+async function asaasGet(caminho: string, metodo = 'GET', corpo?: unknown) {
   const r = await fetch(ASAAS + caminho, {
+    method: metodo, ...(corpo ? { body: JSON.stringify(corpo) } : {}),
     headers: { access_token: CHAVE, 'User-Agent': 'Siscon-Orgacon', 'Content-Type': 'application/json', ...(PONTE ? { 'X-Ponte-Token': PONTE, 'X-Asaas-Key': CHAVE } : {}) },
   })
   const txt = await r.text()
@@ -69,7 +71,8 @@ Deno.serve(async (req) => {
   try {
     if (!(await usuarioLogado(req))) return resposta({ erro: 'Não autorizado' }, 401)
     if (!CHAVE) return resposta({ erro: 'ASAAS_API_KEY não configurada nos Secrets do Supabase' }, 500)
-    const { acao } = await req.json().catch(() => ({}))
+    const corpoReq = await req.json().catch(() => ({}))
+    const { acao } = corpoReq
 
     if (acao === 'saldo') {
       const b = await asaasGet('/finance/balance')
@@ -95,6 +98,34 @@ Deno.serve(async (req) => {
           vencimento: p.dueDate, status: p.status, descricao: p.description || '', link: p.invoiceUrl || null,
         })),
       })
+    }
+
+    // Etapa 2: altera boletos PENDENTES (confere a situação no Asaas antes de alterar) — lista aprovada no Siscon
+    if (acao === 'aplicar_boletos') {
+      const { ajustes } = corpoReq as { ajustes: { id: string; valor: number; descricao: string }[] }
+      const resultado = []
+      for (const a of ajustes || []) {
+        try {
+          const p = await asaasGet(`/payments/${encodeURIComponent(a.id)}`)
+          if (p.deleted || p.status !== 'PENDING') { resultado.push({ id: a.id, ok: false, msg: `boleto não está mais pendente (${p.deleted ? 'removido' : p.status})` }); continue }
+          await asaasGet(`/payments/${encodeURIComponent(a.id)}`, 'POST', { billingType: p.billingType, dueDate: p.dueDate, value: a.valor, description: a.descricao })
+          resultado.push({ id: a.id, ok: true, msg: 'alterado' })
+        } catch (e) { resultado.push({ id: a.id, ok: false, msg: (e as Error).message }) }
+      }
+      return resposta({ resultado })
+    }
+
+    // Etapa 2: valor da assinatura (vale para os próximos boletos; os já criados são ajustados pela lista de boletos)
+    if (acao === 'aplicar_assinaturas') {
+      const { ajustes } = corpoReq as { ajustes: { id: string; valor: number }[] }
+      const resultado = []
+      for (const a of ajustes || []) {
+        try {
+          await asaasGet(`/subscriptions/${encodeURIComponent(a.id)}`, 'POST', { value: a.valor, updatePendingPayments: false })
+          resultado.push({ id: a.id, ok: true, msg: 'alterada' })
+        } catch (e) { resultado.push({ id: a.id, ok: false, msg: (e as Error).message }) }
+      }
+      return resposta({ resultado })
     }
 
     return resposta({ erro: 'Ação inválida' }, 400)
