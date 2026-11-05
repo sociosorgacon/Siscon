@@ -166,7 +166,7 @@ const PAGO = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']
 /** Boletos do Asaas com vencimento no mês dos recebimentos da competência (alimentado pelos avisos do webhook) */
 function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: string })[] | null; erro: boolean; mes: string; v: (n: number) => string }) {
   const hojeIso = new Date().toLocaleDateString('sv-SE')
-  const [aba, setAba] = useState<'vencidos' | 'vencer' | 'pagos'>('vencidos')
+  const [aba, setAba] = useState<'vencidos' | 'vencer' | 'pagos'>('vencer')
   const doMes = (lista || []).filter(x => x.vencimento?.startsWith(mes))
   const grupos = {
     pagos: doMes.filter(x => PAGO.includes(x.status)).sort((a, b) => (b.data_pagamento || '').localeCompare(a.data_pagamento || '')),
@@ -176,8 +176,8 @@ function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: str
   const soma = (l: Cobranca[]) => l.reduce((s, x) => s + Number(x.valor || 0), 0)
   const [a, m] = mes.split('-')
   const blocos = [
-    ['vencidos', 'Vencidos', 'text-red-600', 'ring-red-200 bg-red-50'],
     ['vencer', 'A vencer', 'text-amber-600', 'ring-amber-200 bg-amber-50'],
+    ['vencidos', 'Vencidos', 'text-red-600', 'ring-red-200 bg-red-50'],
     ['pagos', 'Pagos', 'text-emerald-600', 'ring-emerald-200 bg-emerald-50'],
   ] as const
   const sel = grupos[aba]
@@ -193,7 +193,7 @@ function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: str
             </button>))}
         </div>
         {sel.length === 0
-          ? <p className="px-5 py-6 text-center text-sm text-slate-400">{doMes.length ? 'Nenhum boleto nesta situação.' : 'Nenhum aviso do Asaas para boletos deste mês ainda.'}</p>
+          ? <p className="px-5 py-6 text-center text-sm text-slate-400">{doMes.length ? aba === 'vencer' ? 'Nenhum boleto a vencer neste mês.' : 'Nenhum boleto nesta situação.' : 'Nenhum aviso do Asaas para boletos deste mês ainda.'}</p>
           : <ul className="mt-2 max-h-64 divide-y divide-slate-100 overflow-y-auto">
             {sel.map(x => (
               <li key={x.payment_id} className="flex items-center gap-3 px-5 py-2 text-sm">
