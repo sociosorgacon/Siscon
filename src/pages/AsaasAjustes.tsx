@@ -17,7 +17,7 @@ import { Aviso } from './Asaas'
 type DespesaB = Despesa & { asaas_boleto_id: string | null }
 type Fixa = { cliente_id: string; valor: number; ativa: boolean }
 type Item = { texto: string; valor: number; despesa?: string }
-type Proposta = { id: string; cliente: Cliente; vencimento: string; comp: string; atual: number; novo: number; descAtual: string; descNova: string; itens: Item[]; avisos: string[] }
+type Proposta = { id: string; cliente: Cliente; vencimento: string; comp: string; atual: number; novo: number; descAtual: string; descNova: string; itens: Item[]; avisos: string[]; info: string[] }
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 const dig = (s: string | null | undefined) => (s || '').replace(/\D/g, '')
@@ -46,7 +46,9 @@ export default function AsaasAjustes() {
     const [asaas, cli, hon, des, fixas, sal, docs] = await Promise.all([
       chamarAsaas<{ assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[] }>('ajustes'),
       todos<Cliente>((a, b) => supabase.from('clientes').select('*').range(a, b)),
-      todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').gte('competencia', desde).range(a, b)),
+      // honorários a partir da competência de corte + todos em aberto (para reconhecer atrasado incluído à mão no boleto)
+      Promise.all([todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').gte('competencia', desde).range(a, b)),
+        todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').lt('competencia', desde).gt('saldo', 0).range(a, b))]).then(([x, y]) => [...x, ...y]),
       todos<DespesaB>((a, b) => supabase.from('v_despesas').select('*').gt('saldo', 0).range(a, b)),
       todos<Fixa>((a, b) => supabase.from('despesas_fixas').select('cliente_id, valor, ativa').range(a, b)),
       ok(await supabase.from('salarios_minimos').select('vigencia, valor')) as SalarioMinimo[],
@@ -126,7 +128,30 @@ export default function AsaasAjustes() {
       if (!itens.length && !extras.length) continue
       for (const d of extras.sort((a, b) => a.competencia.localeCompare(b.competencia) || a.descricao.localeCompare(b.descricao)))
         itens.push({ texto: (d.competencia < C ? `${d.descricao} (${comp(d.competencia)})` : d.descricao) + (d.cliente_id !== c.id ? ` - ${nomeCurto(d.cliente_id)}` : ''), valor: r2(d.saldo), despesa: d.id })
-      const novo = r2(itens.reduce((s, i) => s + i.valor, 0))
+      let novo = r2(itens.reduce((s, i) => s + i.valor, 0))
+      // Boleto no Asaas MAIOR que o esperado: se a diferença bate com honorário(s) em atraso do cliente, ele foi incluído
+      // à mão (ex.: Igreja Chave de Davi com o mês anterior) → mantém no valor, sem advertência.
+      const semAc = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ')
+      const extrasNovos = extras.filter(d => !semAc((p.descricao || '') + ' ' + (assinaturaDe(p.assinatura)?.descricao || '')).includes(semAc(d.descricao)))
+      const gap = r2(p.valor - (novo - extrasNovos.reduce((t, d) => t + d.saldo, 0)))
+      const info: string[] = []
+      if (gap > 0.009) {
+        const atrasados = dados.hon.filter(x => pag(x.cliente_id) === c.id && x.competencia < C && x.saldo > 0.009)
+          .sort((a, b) => b.competencia.localeCompare(a.competencia)).slice(0, 8)
+        let achou: Honorario[] | null = null
+        for (let m = 1; m < (1 << atrasados.length) && !achou; m++) {
+          const sub = atrasados.filter((_, i) => m & (1 << i))
+          const porSaldo = sub.reduce((t, x) => t + x.saldo, 0)
+          const porOriginal = sub.reduce((t, x) => t + Math.max(0, x.valor_original - x.valor_pago_acumulado - x.desconto), 0)
+          if (Math.abs(porSaldo - gap) <= 1 || Math.abs(porOriginal - gap) <= 1) achou = sub
+        }
+        if (achou) {
+          for (const x of achou.sort((a, b) => a.competencia.localeCompare(b.competencia)))
+            info.push(`inclui honorário em atraso ${comp(x.competencia)}${x.cliente_id !== c.id ? ` (${nomeCurto(x.cliente_id)})` : ''} já cobrado neste boleto`)
+          itens.push({ texto: 'Honorários em atraso (já no boleto)', valor: gap })
+          novo = r2(novo + gap)
+        }
+      }
       // Descrição: o Asaas já imprime a descrição da ASSINATURA no boleto (ex.: "Honorários Mensais").
       // Por isso o Siscon manda só as despesas extras (uma linha por item, com valor), sem repetir o honorário
       // nem o que já está na descrição da assinatura (ex.: NFStock da El-Shaday). Sem extras, a descrição fica como está.
@@ -140,7 +165,7 @@ export default function AsaasAjustes() {
       if (!mudouValor && !mudouDesc) continue
       if (novo <= 0) avisos.push('valor ficaria zerado: confira e, se for o caso, cancele o boleto no Asaas')
       else if (novo < p.valor - 0.009) avisos.push(`valor menor que o atual no Asaas (${moeda(p.valor)}): o boleto pode incluir débito de outro mês colocado à mão`)
-      propostas.push({ id: p.id, cliente: c, vencimento: p.vencimento, comp: C, atual: p.valor, novo, descAtual: p.descricao || '', descNova, itens, avisos })
+      propostas.push({ id: p.id, cliente: c, vencimento: p.vencimento, comp: C, atual: p.valor, novo, descAtual: p.descricao || '', descNova, itens, avisos, info })
     }
     propostas.sort((a, b) => a.vencimento.localeCompare(b.vencimento) || a.cliente.razao_social.localeCompare(b.cliente.razao_social))
 
@@ -238,6 +263,7 @@ export default function AsaasAjustes() {
                 </div>
                 <div className="mt-1 flex gap-4"><button className="text-xs font-medium text-marca-700 hover:underline" onClick={() => abrirBoleto({ id: p.id }).catch(e => avisar((e as Error).message, 'erro'))}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Ver boleto (PDF)</span></button>
                 {p.itens.some(i => i.despesa) && <button className="text-xs text-slate-500 hover:text-red-600 hover:underline" onClick={() => ignorar(p)}>Não cobrar estas despesas pelo Asaas</button>}</div>
+                {p.info.map(a => <p key={a} className="mt-1 text-xs text-slate-500">ℹ {a}</p>)}
                 {p.avisos.map(a => <p key={a} className="mt-1 text-xs font-medium text-amber-700">⚠ {a} (desmarcado; marque se estiver certo)</p>)}
               </div>
             </li>))}
