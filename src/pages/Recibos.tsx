@@ -3,7 +3,7 @@ import { supabase, ok, todos, type Recibo } from '../lib/supabase'
 import { useApp, useDados, escritorioDe } from '../lib/app'
 import { moeda, data, normaliza } from '../lib/format'
 import { imprimirRecibo } from '../lib/recibo-pdf'
-import { Avatar, Botao, Busca, Cabecalho, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
+import { Avatar, FiltroClientes, clientesDe, Botao, Busca, Cabecalho, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone } from '../components/icones'
 
 export default function Recibos() {
@@ -18,9 +18,10 @@ export default function Recibos() {
   const { dados, recarregar } = useDados(() => todos<Recibo>((a, b) =>
     supabase.from('recibos').select('*').order('data_pagamento', { ascending: false }).order('numero', { ascending: false, nullsFirst: false }).range(a, b)))
 
-  const lista = useMemo(() => (dados || []).filter(r =>
+  const [selCli, setSelCli] = useState<Set<string> | null>(null)
+  const lista = useMemo(() => (dados || []).filter(r => (!selCli || (!!r.cliente_id && selCli.has(r.cliente_id))) &&
     (!tipo || (tipo === 'com') === r.com_recibo) && (!de || r.data_pagamento >= de) && (!ate || r.data_pagamento <= ate) &&
-    (!busca || normaliza(`${r.cliente_nome} ${r.numero ?? ''} ${r.cliente_cnpj ?? ''}`).includes(normaliza(busca)))), [dados, busca, de, ate, tipo])
+    (!busca || normaliza(`${r.cliente_nome} ${r.numero ?? ''} ${r.cliente_cnpj ?? ''}`).includes(normaliza(busca)))), [dados, busca, de, ate, tipo, selCli])
   const total = lista.filter(r => !r.cancelado).reduce((s, r) => s + r.valor, 0)
 
   async function confirmarCancelamento() {
@@ -44,6 +45,9 @@ export default function Recibos() {
           { rotulo: 'Canceladas', valor: lista.filter(r => r.cancelado).length, detalhe: 'não entram nos totais', tom: 'vermelho' },
         ]} />
       })()}
+      <div className="grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)]">
+        <FiltroClientes clientes={clientesDe(dados, r => r.cliente_id, r => r.cliente_nome)} sel={selCli} mudar={setSelCli} />
+        <div className="min-w-0">
       <Cartao>
         <div className="filtros">
           <Pilulas atual={tipo} mudar={setTipo} opcoes={[
@@ -78,6 +82,8 @@ export default function Recibos() {
             </table>
           </div>}
       </Cartao>
+        </div>
+      </div>
       <Modal titulo={`Cancelar baixa${cancelar?.numero ? ' · recibo nº ' + cancelar.numero : ''}`} aberto={!!cancelar} fechar={() => setCancelar(null)}>
         <p className="mb-3 text-sm text-slate-600">
           A baixa de <b>{cancelar?.cliente_nome}</b> ({moeda(cancelar?.valor)}) será cancelada e os honorários/despesas pagos por ela voltam a ficar em aberto. O registro não é apagado.

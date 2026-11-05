@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Despesa } from '../lib/supabase'
 import { useApp, useDados, descricoesPadrao } from '../lib/app'
 import { moeda, data, comp, compParaIso, hojeIso, normaliza } from '../lib/format'
-import { Abas, Avatar, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
+import { Abas, Avatar, FiltroClientes, clientesDe, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone } from '../components/icones'
 
 type Fixa = { id: string; cliente_id: string; descricao: string; valor: number; observacoes: string | null; ativa: boolean; clientes?: { razao_social: string } }
@@ -35,9 +35,10 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
   const [edit, setEdit] = useState<Partial<Despesa> | null>(null)
   const { dados, recarregar } = useDados(() => todos<Despesa>((a, b) => supabase.from('v_despesas').select('*').order('data', { ascending: false }).range(a, b)))
 
-  const lista = useMemo(() => (dados || []).filter(d =>
+  const [selCli, setSelCli] = useState<Set<string> | null>(null)
+  const lista = useMemo(() => (dados || []).filter(d => (!selCli || selCli.has(d.cliente_id)) &&
     (status === '' || (status === 'abertas' ? d.saldo > 0 : d.status === status)) &&
-    (!busca || normaliza(`${d.cliente_nome} ${d.descricao}`).includes(normaliza(busca)))), [dados, status, busca])
+    (!busca || normaliza(`${d.cliente_nome} ${d.descricao}`).includes(normaliza(busca)))), [dados, status, busca, selCli])
 
   return (
     <>
@@ -53,6 +54,9 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
           { rotulo: 'Já recebido', valor: moeda(dados.reduce((s, d) => s + d.valor_pago, 0)), detalhe: 'total pago das despesas', tom: 'verde' },
         ]} />
       })()}
+      <div className="grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)]">
+        <FiltroClientes clientes={clientesDe(dados, d => d.cliente_id, d => d.cliente_nome)} sel={selCli} mudar={setSelCli} />
+        <div className="min-w-0">
       <Cartao>
         <div className="filtros">
           <Pilulas atual={status} mudar={setStatus} opcoes={[
@@ -83,6 +87,8 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
             </table>
           </div>}
       </Cartao>
+        </div>
+      </div>
       {edit && (edit.id
         ? <EditarDespesa d={edit as Despesa} clientes={clientes} fechar={() => setEdit(null)} salvo={() => { setEdit(null); recarregar() }} />
         : <NovaDespesa clientes={clientes} fechar={() => setEdit(null)} salvo={() => { setEdit(null); recarregar() }} />)}

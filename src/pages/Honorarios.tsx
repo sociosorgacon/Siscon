@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Honorario } from '../lib/supabase'
 import { useApp, useDados, salarioPara, type SalarioMinimo } from '../lib/app'
 import { moeda, data, comp, compParaIso, ultimasCompetencias, normaliza, doc } from '../lib/format'
-import { Avatar, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
+import { Avatar, FiltroClientes, clientesDe, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone } from '../components/icones'
 
 export default function Honorarios() {
@@ -25,9 +25,10 @@ export default function Honorarios() {
     return q.range(a, b)
   }), [competencia])
 
-  const lista = useMemo(() => (dados || []).filter(h =>
+  const [selCli, setSelCli] = useState<Set<string> | null>(null)
+  const lista = useMemo(() => (dados || []).filter(h => (!selCli || selCli.has(h.cliente_id)) &&
     (!situacao || h.situacao === situacao || (situacao === 'abertos' && h.saldo > 0)) &&
-    (!busca || normaliza(`${h.cliente_nome} ${h.cliente_cnpj}`).includes(normaliza(busca)))), [dados, situacao, busca])
+    (!busca || normaliza(`${h.cliente_nome} ${h.cliente_cnpj}`).includes(normaliza(busca)))), [dados, situacao, busca, selCli])
 
   const conta = (f: (h: Honorario) => boolean) => (dados || []).filter(h => (!busca || normaliza(`${h.cliente_nome} ${h.cliente_cnpj}`).includes(normaliza(busca))) && f(h)).length
   const todosTot = (dados || []).reduce((s, h) => ({ valor: s.valor + h.valor_atualizado_calc, pago: s.pago + h.valor_pago_acumulado, saldo: s.saldo + h.saldo, atr: s.atr + (h.situacao === 'Atrasado' ? h.saldo : 0), nAtr: s.nAtr + (h.situacao === 'Atrasado' ? 1 : 0) }), { valor: 0, pago: 0, saldo: 0, atr: 0, nAtr: 0 })
@@ -69,6 +70,9 @@ export default function Honorarios() {
         { rotulo: 'Em aberto', valor: moeda(todosTot.saldo), detalhe: `${dados.filter(h => h.saldo > 0).length} honorários`, tom: 'laranja' },
         { rotulo: 'Atrasado', valor: moeda(todosTot.atr), detalhe: `${todosTot.nAtr} honorários`, tom: 'vermelho' },
       ]} />}
+      <div className="grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)]">
+        <FiltroClientes clientes={clientesDe(dados, h => h.cliente_id, h => h.cliente_nome)} sel={selCli} mudar={setSelCli} />
+        <div className="min-w-0">
       <Cartao>
         <div className="filtros">
           <select className="campo w-52" value={competencia} onChange={e => setCompSel(e.target.value)}>
@@ -108,6 +112,8 @@ export default function Honorarios() {
             </table>
           </div>}
       </Cartao>
+        </div>
+      </div>
       {edit && <EditarHonorario h={edit} fechar={() => setEdit(null)} salvo={() => { setEdit(null); recarregar() }} />}
       {fechamento && <FechamentoEscrita fechar={() => setFechamento(false)} />}
       {novo && <NovoHonorario competencia={competencia || config.competencia_atual} fechar={() => setNovo(false)} salvo={() => { setNovo(false); recarregar() }} />}

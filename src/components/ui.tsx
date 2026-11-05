@@ -207,3 +207,34 @@ export function GrupoAsaas({ grupo }: { grupo?: string | null }) {
   return <span title="Grupo do cliente no Asaas" className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10px] font-medium ring-1 ring-inset ${coresGrupo[grupo] || 'bg-slate-100 text-slate-600 ring-slate-200'}`}>
     {grupo === 'Impressos' ? <Icone nome="impressora" className="h-3 w-3" /> : <img src={iconeGrupo[grupo] || '/asaas.png'} alt="" className="h-3 w-3 object-contain" />}{grupo}</span>
 }
+
+/** Filtro lateral de clientes (o mesmo de Relatórios): "Todos" ou marcar um ou mais; com busca. sel = null → todos */
+export function FiltroClientes({ clientes, sel, mudar }: { clientes: { id: string; nome: string }[]; sel: Set<string> | null; mudar: (s: Set<string> | null) => void }) {
+  const [busca, setBusca] = useState('')
+  const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const lista = clientes.filter(c => !busca || norm(c.nome).includes(norm(busca)))
+  const alternar = (id: string) => { const n = new Set(sel ?? []); if (n.has(id)) n.delete(id); else n.add(id); mudar(n.size ? n : null) }
+  return (
+    <aside className="h-fit rounded-xl border border-slate-200 bg-white shadow-sm print:hidden lg:sticky lg:top-20">
+      <p className="flex items-center gap-2 border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-700"><Icone nome="clientes" className="h-4 w-4 text-slate-400" />Clientes
+        <span className="ml-auto text-xs text-slate-400">{sel ? `${sel.size} de ${clientes.length}` : clientes.length}</span></p>
+      <div className="p-2">
+        <input className="campo !h-8 mb-2 text-xs" placeholder="Buscar cliente" value={busca} onChange={e => setBusca(e.target.value)} />
+        <button onClick={() => mudar(null)} className={`mb-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${!sel ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <input type="checkbox" readOnly checked={!sel} /> Todos os clientes</button>
+        <ul className="max-h-[60vh] overflow-y-auto">
+          {lista.map(c => <li key={c.id}>
+            <label className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50" title={c.nome}>
+              <input type="checkbox" checked={!!sel?.has(c.id)} onChange={() => alternar(c.id)} />
+              <span className="truncate">{c.nome}</span></label></li>)}
+        </ul>
+      </div>
+    </aside>
+  )
+}
+/** Clientes distintos de uma lista (id + nome), em ordem alfabética */
+export function clientesDe<T>(itens: T[] | null | undefined, id: (x: T) => string | null | undefined, nome: (x: T) => string) {
+  const m = new Map<string, string>()
+  for (const x of itens || []) { const i = id(x); if (i && !m.has(i)) m.set(i, nome(x)) }
+  return [...m].map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+}
