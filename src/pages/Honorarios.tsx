@@ -31,8 +31,8 @@ export default function Honorarios() {
     (!busca || normaliza(`${h.cliente_nome} ${h.cliente_cnpj}`).includes(normaliza(busca)))), [dados, situacao, busca, selCli])
 
   const conta = (f: (h: Honorario) => boolean) => (dados || []).filter(h => (!busca || normaliza(`${h.cliente_nome} ${h.cliente_cnpj}`).includes(normaliza(busca))) && f(h)).length
-  const todosTot = (dados || []).reduce((s, h) => ({ valor: s.valor + h.valor_atualizado_calc, pago: s.pago + h.valor_pago_acumulado, saldo: s.saldo + h.saldo, atr: s.atr + (h.situacao === 'Atrasado' ? h.saldo : 0), nAtr: s.nAtr + (h.situacao === 'Atrasado' ? 1 : 0) }), { valor: 0, pago: 0, saldo: 0, atr: 0, nAtr: 0 })
-  const tot = lista.reduce((s, h) => ({ valor: s.valor + h.valor_atualizado_calc, pago: s.pago + h.valor_pago_acumulado, saldo: s.saldo + h.saldo }), { valor: 0, pago: 0, saldo: 0 })
+  const todosTot = (dados || []).reduce((s, h) => ({ orig: s.orig + h.valor_original, jur: s.jur + h.juros_calc, valor: s.valor + h.valor_atualizado_calc, pago: s.pago + h.valor_pago_acumulado, saldo: s.saldo + h.saldo, atr: s.atr + (h.situacao === 'Atrasado' ? h.saldo : 0), nAtr: s.nAtr + (h.situacao === 'Atrasado' ? 1 : 0) }), { orig: 0, jur: 0, valor: 0, pago: 0, saldo: 0, atr: 0, nAtr: 0 })
+  const tot = lista.reduce((s, h) => ({ orig: s.orig + h.valor_original, jur: s.jur + h.juros_calc, valor: s.valor + h.valor_atualizado_calc, pago: s.pago + h.valor_pago_acumulado, saldo: s.saldo + h.saldo }), { orig: 0, jur: 0, valor: 0, pago: 0, saldo: 0 })
 
   async function gerar() {
     if (!competencia) return
@@ -65,7 +65,9 @@ export default function Honorarios() {
           <Botao onClick={avancar} disabled={ocupado}>Avançar competência</Botao>
         </>} />
       {dados && <Resumo itens={[
-        { rotulo: competencia ? `Faturado ${competencia}` : 'Faturado', valor: moeda(todosTot.valor), detalhe: `${dados.length} honorários`, tom: 'azul' },
+        // só na tela: honorários e juros separados (relatórios para o cliente continuam com o valor somado)
+        { rotulo: competencia ? `Honorários ${competencia}` : 'Honorários', valor: moeda(todosTot.orig), detalhe: `${dados.length} honorários`, tom: 'azul' },
+        { rotulo: 'Juros', valor: moeda(todosTot.jur), detalhe: `total com juros ${moeda(todosTot.valor)}`, tom: 'cinza' },
         { rotulo: 'Recebido', valor: moeda(todosTot.pago), detalhe: todosTot.valor ? `${Math.round(todosTot.pago / todosTot.valor * 100)}% do faturado` : undefined, tom: 'verde' },
         { rotulo: 'Em aberto', valor: moeda(todosTot.saldo), detalhe: `${dados.filter(h => h.saldo > 0).length} honorários`, tom: 'laranja' },
         { rotulo: 'Atrasado', valor: moeda(todosTot.atr), detalhe: `${todosTot.nAtr} honorários`, tom: 'vermelho' },
@@ -107,7 +109,7 @@ export default function Honorarios() {
                   </span></td>
                 </tr>))}
               </tbody>
-              <tfoot><tr className="font-semibold text-slate-800"><td colSpan={3} className="px-3 py-2">{lista.length} honorários</td><td colSpan={2} className="num px-3 text-right">{moeda(tot.valor)}</td>
+              <tfoot><tr className="font-semibold text-slate-800"><td colSpan={3} className="px-3 py-2">{lista.length} honorários</td><td className="num px-3 text-right">{moeda(tot.orig)}</td><td className="num px-3 text-right">{tot.jur ? moeda(tot.jur) : '—'}</td>
                 <td className="num px-3 text-right">{moeda(tot.pago)}</td><td className="num px-3 text-right">{moeda(tot.saldo)}</td><td colSpan={2} /></tr></tfoot>
             </table>
           </div>}

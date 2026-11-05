@@ -149,7 +149,7 @@ const tonsResumo = {
 }
 export function Resumo({ itens }: { itens: { rotulo: string; valor: ReactNode; detalhe?: ReactNode; tom?: keyof typeof tonsResumo }[] }) {
   return (
-    <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className={`mb-5 grid grid-cols-2 gap-3 ${itens.length >= 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
       {itens.map(i => (
         <div key={i.rotulo} className={`rounded-xl border border-slate-200/80 border-l-4 ${tonsResumo[i.tom || 'azul']} bg-white px-4 py-3 shadow-[0_1px_2px_rgba(16,24,40,.04)]`}>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{i.rotulo}</p>

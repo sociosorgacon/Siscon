@@ -3,6 +3,7 @@ import { useApp } from '../lib/app'
 import { chamarAsaas, abrirBoleto } from '../lib/asaas'
 import { moeda, data } from '../lib/format'
 import { Botao, Cartao, LogoAsaas, Vazio, useAviso } from '../components/ui'
+import { Icone } from '../components/icones'
 
 /**
  * Boletos do mês por GRUPO do Asaas (definido no cadastro do cliente no Asaas):
@@ -100,7 +101,7 @@ export default function AsaasLote() {
       {GRUPOS.map(g => {
         const lista = listas[g.grupo]
         const total = (lista || []).reduce((s, b) => s + b.valor, 0)
-        return <Cartao key={g.grupo} titulo={<span className="inline-flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full bg-gradient-to-br ${g.cor}`} />Grupo {g.titulo} <span className="text-xs font-normal text-slate-400">· {g.saida}</span></span>}
+        return <Cartao key={g.grupo} titulo={<span className="inline-flex items-center gap-2">{g.grupo === 'Impressos' ? <Icone nome="impressora" className="h-4 w-4 text-blue-600" /> : <img src="/acessorias.png" alt="" className="h-4 w-4 object-contain" />}Grupo {g.titulo} <span className="text-xs font-normal text-slate-400">· {g.saida}</span></span>}
           acoes={<div className="flex gap-2">
             <Botao variante="secundario" onClick={() => buscar(g.grupo)} disabled={!!ocupado}>{lista ? 'Buscar de novo' : 'Buscar boletos'}</Botao>
             {lista && lista.length > 0 && <Botao onClick={() => gerar(g.grupo)} disabled={!!ocupado}>{g.grupo === 'Impressos' ? 'Gerar PDF' : 'Baixar ZIP'}</Botao>}
