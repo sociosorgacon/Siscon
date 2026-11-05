@@ -27,6 +27,8 @@ const linha = (texto: string, valor: number) => `${texto} - ${valor.toLocaleStri
 type Dados = { assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[]; cli: Cliente[]; hon: Honorario[]; des: DespesaB[]; fixas: Fixa[]; sal: SalarioMinimo[] }
 let cache: { t: number; desde: string; dados: Dados } | null = null
 const forcar = { atual: false }
+/** Ao sair da página Integração Asaas o cache é descartado: ao voltar (ex.: depois de lançar despesas), consulta de novo */
+export const limparCacheAjustes = () => { cache = null }
 
 export default function AsaasAjustes() {
   const avisar = useAviso()

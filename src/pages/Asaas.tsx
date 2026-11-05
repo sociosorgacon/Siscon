@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase, ok, todos, type Cliente, type Honorario, type Despesa } from '../lib/supabase'
 import { useApp, useDados } from '../lib/app'
 import { chamarAsaas, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/asaas'
 import AsaasExtrato from './AsaasExtrato'
-import AsaasAjustes from './AsaasAjustes'
+import AsaasAjustes, { limparCacheAjustes } from './AsaasAjustes'
 import { moeda, data, comp, doc, normaliza, compParaIso } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
 import { Avatar, Botao, Cabecalho, LogoAsaas, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
@@ -28,6 +28,7 @@ const ROTULO_STATUS: Record<Evento['status'], string> = { processado: 'Baixado',
 
 export default function Asaas() {
   const [aba, setAba] = useState<'baixas' | 'extrato' | 'conferencia' | 'ajustes'>('baixas')
+  useEffect(() => limparCacheAjustes, [])   // ao sair da página, a lista de ajustes volta a consultar o Asaas
   return (
     <>
       <Cabecalho logo={<LogoAsaas className="h-7 w-7" />} titulo="Integração Asaas" subtitulo="Baixa automática dos boletos pagos, importação do extrato, conferência e ajuste dos boletos" />
