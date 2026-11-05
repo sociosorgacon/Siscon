@@ -16,6 +16,7 @@ export default function Honorarios() {
   const [busca, setBusca] = useState('')
   const [edit, setEdit] = useState<Honorario | null>(null)
   const [novo, setNovo] = useState(false)
+  const [fechamento, setFechamento] = useState(false)
   const [ocupado, setOcupado] = useState(false)
 
   const { dados, recarregar } = useDados(() => todos<Honorario>((a, b) => {
@@ -57,6 +58,7 @@ export default function Honorarios() {
     <>
       <Cabecalho icone="honorarios" titulo="Honorários" subtitulo="Valor = salário mínimo × % do cliente · vencimento no mês seguinte"
         acoes={<>
+          <Botao variante="secundario" onClick={() => setFechamento(true)}>Fechamento de Escrita</Botao>
           <Botao variante="secundario" onClick={() => setNovo(true)}>Geração avulsa</Botao>
           <Botao variante="secundario" onClick={gerar} disabled={ocupado || !competencia}>Gerar competência {competencia}</Botao>
           <Botao onClick={avancar} disabled={ocupado}>Avançar competência</Botao>
@@ -107,6 +109,7 @@ export default function Honorarios() {
           </div>}
       </Cartao>
       {edit && <EditarHonorario h={edit} fechar={() => setEdit(null)} salvo={() => { setEdit(null); recarregar() }} />}
+      {fechamento && <FechamentoEscrita fechar={() => setFechamento(false)} />}
       {novo && <NovoHonorario competencia={competencia || config.competencia_atual} fechar={() => setNovo(false)} salvo={() => { setNovo(false); recarregar() }} />}
     </>
   )
@@ -210,6 +213,84 @@ function NovoHonorario({ competencia, fechar, salvo }: { competencia: string; fe
         <p className="col-span-2 text-xs text-slate-500">Serão lançados até {sel.length * listaComps.length} honorário(s). Os que já existirem na mesma competência são mantidos.</p>
         <div className="col-span-2 mt-2 flex justify-end gap-2"><Botao type="button" variante="secundario" onClick={fechar}>Cancelar</Botao><Botao>Lançar</Botao></div>
       </form>
+    </Modal>
+  )
+}
+
+/** Fechamento de Escrita (ano): um honorário a mais no fim do ano, mesmo valor do mensal (salário vigente × %),
+ *  parcelável. Lançado como despesa extra (sem juros), da competência atual em diante: "Fechamento de Escrita 2026 (1/3)". */
+function FechamentoEscrita({ fechar }: { fechar: () => void }) {
+  const avisar = useAviso()
+  const { config } = useApp()
+  const ano = config.competencia_atual.slice(3)
+  const nome = `Fechamento de Escrita ${ano}`
+  const { dados } = useDados(async () => {
+    const [cli, sal, ja] = await Promise.all([
+      todos<Cliente>((a, b) => supabase.from('clientes').select('*').eq('status', 'Ativo').gt('percentual_honorario', 0).order('razao_social').range(a, b)),
+      ok(await supabase.from('salarios_minimos').select('vigencia, valor')) as SalarioMinimo[],
+      todos<{ cliente_id: string }>((a, b) => supabase.from('despesas').select('cliente_id').ilike('descricao', `${nome}%`).range(a, b)),
+    ])
+    return { cli, sal, ja: new Set(ja.map(x => x.cliente_id)) }
+  })
+  const sm = dados ? salarioPara(dados.sal, compParaIso(config.competencia_atual), Number(config.salario_minimo)) : 0
+  const valorDe = (c: Cliente) => Math.round(sm * c.percentual_honorario) / 100
+  const [sel, setSel] = useState<string[]>([])
+  const [filtro, setFiltro] = useState('')
+  const [parcelas, setParcelas] = useState(1)
+  const [salvando, setSalvando] = useState(false)
+  const livres = (dados?.cli || []).filter(c => !dados!.ja.has(c.id))
+  const lista = (dados?.cli || []).filter(c => !filtro || normaliza(c.razao_social).includes(normaliza(filtro)))
+  const todosMarcados = livres.length > 0 && livres.every(c => sel.includes(c.id))
+  const total = livres.filter(c => sel.includes(c.id)).reduce((s, c) => s + valorDe(c), 0)
+  const compN = (n: number) => { const [m, a] = config.competencia_atual.split('/').map(Number); const d = new Date(a, m - 1 + n, 1); return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}` }
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault()
+    const clientes = livres.filter(c => sel.includes(c.id))
+    if (!clientes.length) return avisar('Selecione ao menos um cliente.', 'erro')
+    if (!confirm(`Lançar "${nome}" para ${clientes.length} cliente(s), em ${parcelas} parcela(s), total ${moeda(total)}?`)) return
+    const hoje = new Date().toLocaleDateString('sv-SE')
+    const linhas = clientes.flatMap(c => {
+      const v = valorDe(c), p = Math.round(v / parcelas * 100) / 100
+      return Array.from({ length: parcelas }, (_, i) => ({
+        cliente_id: c.id, status: 'Pendente', data: hoje, observacoes: null,
+        descricao: parcelas > 1 ? `${nome} (${i + 1}/${parcelas})` : nome,
+        valor: i === parcelas - 1 ? Math.round((v - p * (parcelas - 1)) * 100) / 100 : p,  // última parcela absorve os centavos
+        competencia: compParaIso(compN(i)),
+      }))
+    })
+    setSalvando(true)
+    try { ok(await supabase.from('despesas').insert(linhas)); avisar(`${nome}: ${linhas.length} lançamento(s) para ${clientes.length} cliente(s).`); fechar() }
+    catch (err) { avisar((err as Error).message, 'erro') } finally { setSalvando(false) }
+  }
+
+  return (
+    <Modal titulo={nome} aberto fechar={fechar} largura="max-w-2xl">
+      {!dados ? <Carregando /> : <form onSubmit={salvar} className="grid gap-3">
+        <p className="text-sm text-slate-500">Mesmo valor do honorário mensal de cada cliente (salário mínimo de {moeda(sm)} × %). Entra como despesa extra, <b>sem juros</b>, a partir da competência {config.competencia_atual}.</p>
+        <div>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={todosMarcados} onChange={e => setSel(e.target.checked ? livres.map(c => c.id) : [])} />Selecionar todos ({livres.length})</label>
+            <span className="text-xs text-slate-500">{sel.length} selecionado{sel.length === 1 ? '' : 's'}</span>
+          </div>
+          <input className="campo mb-1" placeholder="Filtrar clientes" value={filtro} onChange={e => setFiltro(e.target.value)} />
+          <div className="max-h-72 overflow-y-auto rounded-md border border-slate-200">
+            {lista.map(c => {
+              const ja = dados.ja.has(c.id)
+              return <label key={c.id} className={`flex items-center justify-between gap-2 px-3 py-1 text-sm ${ja ? 'text-slate-400' : 'hover:bg-slate-50'}`}>
+                <span className="flex min-w-0 items-center gap-2"><input type="checkbox" disabled={ja} checked={!ja && sel.includes(c.id)} onChange={e => setSel(s => e.target.checked ? [...s, c.id] : s.filter(x => x !== c.id))} /><span className="truncate">{c.razao_social}</span>{ja && <span className="shrink-0 rounded bg-slate-100 px-1.5 text-[10px]">já lançado</span>}</span>
+                <span className="num shrink-0 text-xs text-slate-500">{moeda(valorDe(c))}</span>
+              </label>
+            })}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Campo rotulo="Parcelas"><input className="campo" type="number" min="1" max="12" value={parcelas} onChange={e => setParcelas(Math.min(12, Math.max(1, Number(e.target.value) || 1)))} /></Campo>
+          <div className="self-end rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">Total <b className="num text-slate-800">{moeda(total)}</b></div>
+        </div>
+        <p className="text-xs text-slate-500">{parcelas > 1 ? `${parcelas} parcelas mensais, de ${config.competencia_atual} a ${compN(parcelas - 1)}` : `Parcela única na competência ${config.competencia_atual}`} · descrição "{parcelas > 1 ? `${nome} (1/${parcelas})` : nome}".</p>
+        <div className="mt-1 flex justify-end gap-2"><Botao type="button" variante="secundario" onClick={fechar}>Cancelar</Botao><Botao disabled={salvando || !sel.length}>{salvando ? 'Lançando…' : 'Lançar'}</Botao></div>
+      </form>}
     </Modal>
   )
 }
