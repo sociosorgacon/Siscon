@@ -37,7 +37,7 @@ export default function Painel() {
   })
 
   // Saldo da conta Asaas (Edge Function); falha não atrapalha o resto do Painel
-  const asaas = useDados(() => chamarAsaas<{ saldo: number }>('saldo'))
+  const asaas = useDados(() => chamarAsaas<{ saldo: number; confirmado?: number; qtdConfirmado?: number }>('saldo'))
   const boletos = useDados(async () => {
     const [cob, cli] = await Promise.all([
       todos<Cobranca>((a, b) => supabase.from('asaas_cobrancas').select('*').neq('status', 'DELETED').range(a, b)),
@@ -96,6 +96,9 @@ export default function Painel() {
             <Icone nome={oculto ? 'olho' : 'olhoFechado'} className="h-3.5 w-3.5" />{oculto ? 'Mostrar valores' : 'Ocultar valores'}</button>
           {asaas.dados && <Link to="/asaas" className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/80 ring-1 ring-white/20 hover:bg-white/15">
             <span className="inline-flex items-center gap-1.5"><LogoAsaas fundo className="h-3 w-3" />Saldo Asaas</span> <b className="ml-1 text-sm font-semibold text-white">{moeda(asaas.dados.saldo)}</b></Link>}
+          {!!asaas.dados?.confirmado && <span title={`${asaas.dados.qtdConfirmado || ''} pagamento(s) confirmado(s) no Asaas que ainda não caíram na conta (valor líquido)`}
+            className="rounded-lg bg-amber-400/20 px-3 py-1.5 text-xs text-amber-100 ring-1 ring-amber-300/50">
+            Confirmado a cair <b className="ml-1 text-sm font-semibold text-amber-300">{oculto ? 'R$ ••••••' : moeda(asaas.dados.confirmado)}</b></span>}
           <span className="rounded-lg bg-white px-3 py-1.5"><img src="/logo.png" alt="Orgacon" className="h-9" /></span>
         </div>
       </section>

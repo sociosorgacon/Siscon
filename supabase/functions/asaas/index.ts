@@ -75,8 +75,10 @@ Deno.serve(async (req) => {
     const { acao } = corpoReq
 
     if (acao === 'saldo') {
-      const b = await asaasGet('/finance/balance')
-      return resposta({ saldo: Number(b.balance ?? 0) })
+      // saldo disponível + "confirmado": pagamentos já confirmados que ainda não caíram na conta (status CONFIRMED)
+      const [b, conf] = await Promise.all([asaasGet('/finance/balance'), asaasTodos('/payments?status=CONFIRMED')])
+      const confirmado = (conf as Obj[]).reduce((t, p) => t + Number(p.netValue ?? p.value ?? 0), 0)
+      return resposta({ saldo: Number(b.balance ?? 0), confirmado: Math.round(confirmado * 100) / 100, qtdConfirmado: conf.length })
     }
 
     if (acao === 'conferencia') {
