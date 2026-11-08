@@ -10,7 +10,7 @@ import { Icone } from '../components/icones'
 type Linha = { tipo: 'honorario' | 'despesa'; id: string; cid: string; cliente: string; descricao: string; comp: string; venc: string; saldo: number; situacao: string }
 type Sel = { marcado: boolean; valor: string; desconto: string }
 type Avulso = { descricao: string; valor: string }
-const METODOS = ['Pix/Boleto', 'Pix', 'Boleto', 'Dinheiro', 'Transferência', 'Cartão']
+const METODOS = ['Pix/Boleto', 'Pix', 'Boleto', 'Dinheiro', 'Transferência', 'Cartão', 'Notas']
 /** Aceita "1.234,56", "1234,56" e "1234.56" */
 const num = (s: string) => {
   const t = String(s || '').trim()
