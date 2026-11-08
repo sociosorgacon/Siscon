@@ -13,6 +13,7 @@ export default function Recibos() {
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
   const [tipo, setTipo] = useState<'' | 'com' | 'sem'>('')
+  const [forma, setForma] = useState('')   // forma de pagamento (Pix, Boleto, Dinheiro, Notas…)
   const [cancelar, setCancelar] = useState<Recibo | null>(null)
   const [motivo, setMotivo] = useState('')
   const { dados, recarregar } = useDados(() => todos<Recibo>((a, b) =>
@@ -20,8 +21,8 @@ export default function Recibos() {
 
   const [selCli, setSelCli] = useState<Set<string> | null>(null)
   const lista = useMemo(() => (dados || []).filter(r => (!selCli || (!!r.cliente_id && selCli.has(r.cliente_id))) &&
-    (!tipo || (tipo === 'com') === r.com_recibo) && (!de || r.data_pagamento >= de) && (!ate || r.data_pagamento <= ate) &&
-    (!busca || normaliza(`${r.cliente_nome} ${r.numero ?? ''} ${r.cliente_cnpj ?? ''}`).includes(normaliza(busca)))), [dados, busca, de, ate, tipo, selCli])
+    (!tipo || (tipo === 'com') === r.com_recibo) && (!forma || (r.metodo_pagamento || 'Não informada') === forma) && (!de || r.data_pagamento >= de) && (!ate || r.data_pagamento <= ate) &&
+    (!busca || normaliza(`${r.cliente_nome} ${r.numero ?? ''} ${r.cliente_cnpj ?? ''}`).includes(normaliza(busca)))), [dados, busca, de, ate, tipo, forma, selCli])
   const total = lista.filter(r => !r.cancelado).reduce((s, r) => s + r.valor, 0)
 
   async function confirmarCancelamento() {
@@ -53,6 +54,11 @@ export default function Recibos() {
           <Pilulas atual={tipo} mudar={setTipo} opcoes={[
             ['', 'Todas', (dados || []).length], ['com', 'Com recibo', (dados || []).filter(r => r.com_recibo).length], ['sem', 'Sem recibo', (dados || []).filter(r => !r.com_recibo).length],
           ] as const} />
+          <select className="campo !h-9 w-44" value={forma} onChange={e => setForma(e.target.value)} title="Forma de pagamento">
+            <option value="">Todas as formas</option>
+            {[...new Set((dados || []).map(r => r.metodo_pagamento || 'Não informada'))].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(f =>
+              <option key={f} value={f}>{f} ({(dados || []).filter(r => (r.metodo_pagamento || 'Não informada') === f).length})</option>)}
+          </select>
           <span className="flex items-center gap-2 text-xs text-slate-500"><Icone nome="calendario" className="h-4 w-4 text-slate-400" />
             <input className="campo !h-9 w-36" type="date" value={de} onChange={e => setDe(e.target.value)} title="De" /> até
             <input className="campo !h-9 w-36" type="date" value={ate} onChange={e => setAte(e.target.value)} title="Até" />
