@@ -50,14 +50,21 @@ export const normaliza = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '
 /** Feriados nacionais fixos (valor inicial da lista em Configurações) */
 export const FERIADOS_PADRAO = ['01/01 Confraternização Universal', '21/04 Tiradentes', '01/05 Dia do Trabalho', '07/09 Independência',
   '12/10 Nossa Senhora Aparecida', '02/11 Finados', '15/11 Proclamação da República', '20/11 Consciência Negra', '25/12 Natal']
-export type Feriado = { dia: string; nome: string }   // dia = 'MM-DD' (todo ano) ou 'AAAA-MM-DD'
-/** Lê a lista de Configurações: uma por linha, "DD/MM Nome" (todo ano) ou "DD/MM/AAAA Nome" (só naquele ano) */
+export type Feriado = { dia: string; nome: string; municipio?: string }   // dia = 'MM-DD' (todo ano) ou 'AAAA-MM-DD'; municipio vazio = vale para todos
+/** Lê a lista de Configurações: uma por linha, "DD/MM Nome" (todo ano) ou "DD/MM/AAAA Nome" (só naquele ano);
+ *  com " | Município" no fim vale só para os clientes daquele município (feriado municipal) */
 export function lerFeriados(texto: string): Feriado[] {
   return (texto || '').split('\n').map(l => l.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s*[-–]?\s*(.*)$/)).filter(Boolean).map(m => {
-    const [, d, mm, a, nome] = m as RegExpMatchArray
+    const [, d, mm, a, resto] = m as RegExpMatchArray
+    const [nome, municipio] = resto.split('|').map(x => x.trim())
     const md = `${mm.padStart(2, '0')}-${d.padStart(2, '0')}`
-    return { dia: a ? `${a}-${md}` : md, nome: nome.trim() }
+    return { dia: a ? `${a}-${md}` : md, nome, municipio: municipio || undefined }
   })
+}
+/** Compara municípios sem acento, maiúsculas, "/UF" nem espaços extras (ex.: "IUNA" = "Iúna" = "Iúna/ES") */
+export const mesmoMunicipio = (a?: string | null, b?: string | null) => {
+  const n = (s?: string | null) => (s || '').split('/')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+  return !!n(a) && n(a) === n(b)
 }
 const isoDe = (d: Date) => d.toLocaleDateString('sv-SE')
 /** Domingo de Páscoa (algoritmo de Meeus) */
@@ -76,16 +83,18 @@ export function feriadosMoveis(ano: number): Feriado[] {
 let feriadosCadastrados: Feriado[] = lerFeriados(FERIADOS_PADRAO.join('\n'))
 /** Chamado ao carregar as Configurações */
 export const definirFeriados = (texto: string) => { feriadosCadastrados = lerFeriados(texto) }
-export const ehFeriado = (iso: string) => {
+/** Feriado no dia: os gerais valem para todos; os municipais só para o cliente daquele município */
+export const ehFeriado = (iso: string, municipio?: string | null) => {
   const ano = Number(iso.slice(0, 4))
-  return feriadosCadastrados.some(f => f.dia === iso || f.dia === iso.slice(5)) || feriadosMoveis(ano).some(f => f.dia === iso)
+  return feriadosCadastrados.some(f => (f.dia === iso || f.dia === iso.slice(5)) && (!f.municipio || mesmoMunicipio(f.municipio, municipio)))
+    || feriadosMoveis(ano).some(f => f.dia === iso)
 }
 
 /** Vencimento útil: boleto que vence no sábado, domingo ou feriado pode ser pago no próximo dia útil sem atraso */
-export const vencimentoUtil = (iso: string) => {
+export const vencimentoUtil = (iso: string, municipio?: string | null) => {
   const d = new Date(iso.slice(0, 10) + 'T12:00:00')
-  for (let i = 0; i < 10 && (d.getDay() === 0 || d.getDay() === 6 || ehFeriado(isoDe(d))); i++) d.setDate(d.getDate() + 1)
+  for (let i = 0; i < 10 && (d.getDay() === 0 || d.getDay() === 6 || ehFeriado(isoDe(d), municipio)); i++) d.setDate(d.getDate() + 1)
   return isoDe(d)
 }
 /** Boleto em aberto está vencido só depois do vencimento útil (ignora o OVERDUE que o Asaas marca no fim de semana/feriado) */
-export const boletoVencido = (vencimento: string, hoje = hojeIso()) => vencimentoUtil(vencimento) < hoje
+export const boletoVencido = (vencimento: string, hoje = hojeIso(), municipio?: string | null) => vencimentoUtil(vencimento, municipio) < hoje

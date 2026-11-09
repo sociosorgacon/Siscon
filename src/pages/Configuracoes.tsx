@@ -32,16 +32,23 @@ export default function Configuracoes() {
     if (listaDesc.some(x => x.toLowerCase() === d.toLowerCase())) return avisar('Essa descrição já está na lista.', 'erro')
     mudarDesc([...listaDesc, d].sort((a, b) => a.localeCompare(b, 'pt-BR'))); setNovaDesc('')
   }
-  const [novoFer, setNovoFer] = useState({ dia: '', nome: '' })
+  const [novoFer, setNovoFer] = useState({ dia: '', nome: '', municipio: '' })
+  // municípios dos clientes (sugestões do campo Município do feriado)
+  const { dados: municipios } = useDados(async () => {
+    const r = ok(await supabase.from('clientes').select('municipio').not('municipio', 'is', null).limit(1000)) as { municipio: string }[]
+    const m = new Map<string, number>(); r.forEach(x => { const k = x.municipio.trim(); if (k) m.set(k, (m.get(k) || 0) + 1) })
+    return [...m].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
+  })
   const linhasFer = (f.feriados || '').split('\n').map(l => l.trim()).filter(Boolean)
   const ordemFer = (l: string) => { const m = l.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/); return m ? `${m[3] || '0000'}${m[2].padStart(2, '0')}${m[1].padStart(2, '0')}` : l }
   function adicionarFer() {
-    const dia = novoFer.dia.trim(), nome = novoFer.nome.trim().replace(/\s+/g, ' ')
+    const dia = novoFer.dia.trim(), nome = novoFer.nome.trim().replace(/\s+/g, ' ').replace(/\|/g, '-'), mun = novoFer.municipio.trim().replace(/\|/g, '')
     const m = dia.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/)
     if (!m || +m[1] < 1 || +m[1] > 31 || +m[2] < 1 || +m[2] > 12) return avisar('Informe o dia como DD/MM (todo ano) ou DD/MM/AAAA (só naquele ano).', 'erro')
     const d = `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}${m[3] ? '/' + m[3] : ''}`
-    if (linhasFer.some(l => l.startsWith(d + ' ') || l === d)) return avisar('Esse dia já está na lista.', 'erro')
-    setF({ ...f, feriados: [...linhasFer, `${d} ${nome || 'Feriado'}`].sort((a, b) => ordemFer(a).localeCompare(ordemFer(b))).join('\n') }); setNovoFer({ dia: '', nome: '' })
+    if (lerFeriados(linhasFer.join('\n')).some((x, i) => linhasFer[i].split(' ')[0] === d && (x.municipio || '').toLowerCase() === mun.toLowerCase()))
+      return avisar('Esse dia já está na lista' + (mun ? ` para ${mun}.` : '.'), 'erro')
+    setF({ ...f, feriados: [...linhasFer, `${d} ${nome || 'Feriado'}${mun ? ` | ${mun}` : ''}`].sort((a, b) => ordemFer(a).localeCompare(ordemFer(b))).join('\n') }); setNovoFer({ dia: '', nome: '', municipio: '' })
   }
   const anoAtual = Number((f.competencia_atual || '').slice(3)) || new Date().getFullYear()
   useEffect(() => setF(config), [config])
@@ -146,14 +153,18 @@ export default function Configuracoes() {
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarFer() } }} />
             <input className="campo min-w-0 flex-1" placeholder="Nome (ex.: Aniversário de Iúna)" value={novoFer.nome} onChange={e => setNovoFer({ ...novoFer, nome: e.target.value })}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarFer() } }} />
+            <input className="campo w-48" list="municipios-clientes" placeholder="Município (vazio = todos)" value={novoFer.municipio} onChange={e => setNovoFer({ ...novoFer, municipio: e.target.value })}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarFer() } }} />
+            <datalist id="municipios-clientes">{(municipios || []).map(([m, n]) => <option key={m} value={m}>{n} cliente(s)</option>)}</datalist>
             <Botao type="button" variante="secundario" onClick={adicionarFer}><span className="inline-flex items-center gap-1"><Icone nome="mais" className="h-4 w-4" />Adicionar</span></Botao>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {linhasFer.length === 0 && <p className="text-sm text-slate-400">Nenhum feriado cadastrado.</p>}
             {linhasFer.map(l => <span key={l} className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 py-1 pl-3 pr-1.5 text-sm text-rose-900 ring-1 ring-inset ring-rose-200">
-              <b className="num font-semibold">{l.split(' ')[0]}</b>{l.slice(l.indexOf(' ') + 1 || l.length)}<button type="button" title="Remover" onClick={() => setF({ ...f, feriados: linhasFer.filter(x => x !== l).join('\n') })} className="rounded-full p-0.5 text-rose-700 hover:bg-rose-200/60"><Icone nome="fechar" className="h-3.5 w-3.5" /></button></span>)}
+              <b className="num font-semibold">{l.split(' ')[0]}</b>{l.slice(l.indexOf(' ') + 1 || l.length).split('|')[0].trim()}
+              {l.includes('|') && <span className="rounded-full bg-white px-2 text-[11px] font-medium text-rose-700 ring-1 ring-rose-200">{l.split('|')[1].trim()}</span>}<button type="button" title="Remover" onClick={() => setF({ ...f, feriados: linhasFer.filter(x => x !== l).join('\n') })} className="rounded-full p-0.5 text-rose-700 hover:bg-rose-200/60"><Icone nome="fechar" className="h-3.5 w-3.5" /></button></span>)}
           </div>
-          <p className="mt-3 text-xs text-slate-500"><b>Calculados sozinhos todo ano</b> (bancos fechados): {[anoAtual, anoAtual + 1].flatMap(a => feriadosMoveis(a)).map(x => `${x.nome} ${data(x.dia)}`).join(' · ')}. Cadastre aqui os feriados <b>municipais</b> e estaduais das praças dos clientes (DD/MM = todo ano; DD/MM/AAAA = só naquele ano).</p>
+          <p className="mt-3 text-xs text-slate-500"><b>Calculados sozinhos todo ano</b> (bancos fechados): {[anoAtual, anoAtual + 1].flatMap(a => feriadosMoveis(a)).map(x => `${x.nome} ${data(x.dia)}`).join(' · ')}. Feriado com <b>município</b> vale só para os clientes com aquele município no cadastro; sem município vale para todos. DD/MM = todo ano; DD/MM/AAAA = só naquele ano.</p>
         </Secao>
 
         {/* Barra fixa de salvar */}

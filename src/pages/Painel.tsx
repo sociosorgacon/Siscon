@@ -41,12 +41,16 @@ export default function Painel() {
   const boletos = useDados(async () => {
     const [cob, cli] = await Promise.all([
       todos<Cobranca>((a, b) => supabase.from('asaas_cobrancas').select('*').neq('status', 'DELETED').range(a, b)),
-      todos<{ razao_social: string; cnpj: string | null; asaas_customer_id: string | null }>((a, b) => supabase.from('clientes').select('razao_social, cnpj, asaas_customer_id').range(a, b)),
+      todos<{ razao_social: string; cnpj: string | null; asaas_customer_id: string | null; municipio: string | null }>((a, b) => supabase.from('clientes').select('razao_social, cnpj, asaas_customer_id, municipio').range(a, b)),
     ])
     // nome do Siscon pelo vínculo do Asaas ou pelo CPF/CNPJ da planilha importada; senão, o nome que está no Asaas
-    const porCus = new Map(cli.filter(x => x.asaas_customer_id).map(x => [x.asaas_customer_id, x.razao_social]))
-    const porDoc = new Map(cli.filter(x => x.cnpj).map(x => [x.cnpj!.replace(/\D/g, ''), x.razao_social]))
-    return cob.map(x => ({ ...x, nome: porCus.get(x.customer_id) || (x.cpf_cnpj && porDoc.get(x.cpf_cnpj)) || x.cliente_nome || 'Cliente ainda não vinculado' }))
+    const porCus = new Map(cli.filter(x => x.asaas_customer_id).map(x => [x.asaas_customer_id, x]))
+    const porDoc = new Map(cli.filter(x => x.cnpj).map(x => [x.cnpj!.replace(/\D/g, ''), x]))
+    return cob.map(x => {
+      const c = porCus.get(x.customer_id) || (x.cpf_cnpj ? porDoc.get(x.cpf_cnpj) : undefined)
+      // município do cliente: feriado municipal só adia o vencimento dos clientes daquele município
+      return { ...x, nome: c?.razao_social || x.cliente_nome || 'Cliente ainda não vinculado', municipio: c?.municipio || null }
+    })
   })
   const pendAsaas = useDados(async () => (await supabase.from('asaas_eventos').select('id', { count: 'exact', head: true }).in('status', ['pendente', 'erro'])).count || 0)
 
@@ -162,7 +166,7 @@ type Cobranca = { payment_id: string; customer_id: string; valor: number; vencim
 const PAGO = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']
 
 /** Boletos do Asaas com vencimento no mês dos recebimentos da competência (alimentado pelos avisos do webhook) */
-function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: string })[] | null; erro: boolean; mes: string; v: (n: number) => string }) {
+function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: string; municipio: string | null })[] | null; erro: boolean; mes: string; v: (n: number) => string }) {
   const avisar = useAviso()
   const hojeIso = new Date().toLocaleDateString('sv-SE')
   const [aba, setAba] = useState<'vencidos' | 'vencer' | 'pagos'>('vencer')
@@ -170,8 +174,8 @@ function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: str
   const grupos = {
     pagos: doMes.filter(x => PAGO.includes(x.status)).sort((a, b) => (b.data_pagamento || '').localeCompare(a.data_pagamento || '')),
     // sábado/domingo = vence na segunda: o OVERDUE que o Asaas marca no fim de semana ainda conta como "a vencer"
-    vencer: doMes.filter(x => ['PENDING', 'OVERDUE'].includes(x.status) && !boletoVencido(x.vencimento, hojeIso)).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
-    vencidos: doMes.filter(x => ['PENDING', 'OVERDUE'].includes(x.status) && boletoVencido(x.vencimento, hojeIso)).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
+    vencer: doMes.filter(x => ['PENDING', 'OVERDUE'].includes(x.status) && !boletoVencido(x.vencimento, hojeIso, x.municipio)).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
+    vencidos: doMes.filter(x => ['PENDING', 'OVERDUE'].includes(x.status) && boletoVencido(x.vencimento, hojeIso, x.municipio)).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
   }
   const soma = (l: Cobranca[]) => l.reduce((s, x) => s + Number(x.valor || 0), 0)
   const [a, m] = mes.split('-')

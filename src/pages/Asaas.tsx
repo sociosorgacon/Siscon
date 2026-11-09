@@ -180,7 +180,7 @@ function Conferencia() {
         situacao: !c ? 'Não encontrado no Siscon'
           : compIso > compAtualIso && siscon === 0 ? 'Competência ainda não gerada'   // boleto criado antes de o Siscon gerar o honorário
           : Math.abs(dif || 0) > 0.009 ? 'Valor diferente' : 'OK',
-        statusPt: boletoVencido(p.vencimento) ? 'Vencido' : 'Pendente' }   // sábado/domingo = vence na segunda
+        statusPt: boletoVencido(p.vencimento, undefined, c?.municipio) ? 'Vencido' : 'Pendente' }   // sábado/domingo = vence na segunda
     }).sort((a, b) => a.vencimento.localeCompare(b.vencimento) || a.nome.localeCompare(b.nome))
 
     return { assinaturas, cobrancas, comProblema: assinaturas.filter(a => a.situacao !== 'OK').length,
