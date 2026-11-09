@@ -1,17 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { FERIADOS_PADRAO, definirFeriados } from './format'
 
 export type Config = { competencia_atual: string; salario_minimo: string; taxa_juros: string; vigencia_salario: string
   escritorio_nome: string; escritorio_cnpj: string; escritorio_endereco: string; escritorio_cidade: string; escritorio_telefone: string; pix_chave: string
-  descricoes_despesas: string }
+  descricoes_despesas: string; feriados: string }
 type Ctx = { sessao: Session | null; config: Config; recarregarConfig: () => Promise<void> }
 
 const vazio: Config = { competencia_atual: '', salario_minimo: '0', taxa_juros: '1.55', vigencia_salario: '',
   escritorio_nome: 'Orgacon Contabilidade', escritorio_cnpj: '', escritorio_endereco: '', escritorio_cidade: 'Iúna/ES', escritorio_telefone: '', pix_chave: '',
   // Lista padronizada (uma por linha). Valor inicial = lista do Base44, usado até ser salva em Configurações.
   descricoes_despesas: ['Abertura de Empresa', 'Alteração Contratual', 'Certificado Digital PF', 'Certificado Digital PJ',
-    'IRPF 2025/2026', 'Preenchimento NFe/NFSe', 'Xerox e Impressões'].join('\n') }
+    'IRPF 2025/2026', 'Preenchimento NFe/NFSe', 'Xerox e Impressões'].join('\n'),
+  feriados: FERIADOS_PADRAO.join('\n') }
 const AppCtx = createContext<Ctx>({ sessao: null, config: vazio, recarregarConfig: async () => {} })
 export const useApp = () => useContext(AppCtx)
 
@@ -27,7 +29,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const recarregarConfig = useCallback(async () => {
     const { data } = await supabase.from('configuracoes').select('chave, valor')
-    if (data) setConfig({ ...vazio, ...Object.fromEntries(data.map(c => [c.chave, c.valor])) })
+    if (data) { const c = { ...vazio, ...Object.fromEntries(data.map(c => [c.chave, c.valor])) }; definirFeriados(c.feriados); setConfig(c) }
   }, [])
 
   useEffect(() => { if (sessao) recarregarConfig() }, [sessao, recarregarConfig])

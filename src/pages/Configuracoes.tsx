@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase, ok } from '../lib/supabase'
 import { useApp, useDados, descricoesPadrao, type Config, type SalarioMinimo } from '../lib/app'
 import { baixarBackup } from '../lib/backup'
-import { moeda, comp } from '../lib/format'
+import { moeda, comp, lerFeriados, feriadosMoveis, data } from '../lib/format'
 import { Botao, Cabecalho, Campo, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
 
@@ -13,6 +13,7 @@ const descricoes: Partial<Record<keyof Config, string>> = {
   escritorio_cidade: 'Cidade/UF (local do recibo)', escritorio_telefone: 'Telefone do escritório (recibo)',
   pix_chave: 'Chave Pix para o QR Code da relação de honorários',
   descricoes_despesas: 'Descrições padronizadas de despesas extras (uma por linha)',
+  feriados: 'Feriados para vencimento de boletos (DD/MM Nome = todo ano; DD/MM/AAAA Nome = só no ano)',
 }
 
 export default function Configuracoes() {
@@ -31,6 +32,18 @@ export default function Configuracoes() {
     if (listaDesc.some(x => x.toLowerCase() === d.toLowerCase())) return avisar('Essa descrição já está na lista.', 'erro')
     mudarDesc([...listaDesc, d].sort((a, b) => a.localeCompare(b, 'pt-BR'))); setNovaDesc('')
   }
+  const [novoFer, setNovoFer] = useState({ dia: '', nome: '' })
+  const linhasFer = (f.feriados || '').split('\n').map(l => l.trim()).filter(Boolean)
+  const ordemFer = (l: string) => { const m = l.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/); return m ? `${m[3] || '0000'}${m[2].padStart(2, '0')}${m[1].padStart(2, '0')}` : l }
+  function adicionarFer() {
+    const dia = novoFer.dia.trim(), nome = novoFer.nome.trim().replace(/\s+/g, ' ')
+    const m = dia.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/)
+    if (!m || +m[1] < 1 || +m[1] > 31 || +m[2] < 1 || +m[2] > 12) return avisar('Informe o dia como DD/MM (todo ano) ou DD/MM/AAAA (só naquele ano).', 'erro')
+    const d = `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}${m[3] ? '/' + m[3] : ''}`
+    if (linhasFer.some(l => l.startsWith(d + ' ') || l === d)) return avisar('Esse dia já está na lista.', 'erro')
+    setF({ ...f, feriados: [...linhasFer, `${d} ${nome || 'Feriado'}`].sort((a, b) => ordemFer(a).localeCompare(ordemFer(b))).join('\n') }); setNovoFer({ dia: '', nome: '' })
+  }
+  const anoAtual = Number((f.competencia_atual || '').slice(3)) || new Date().getFullYear()
   useEffect(() => setF(config), [config])
   const campo = (k: keyof Config, props: React.InputHTMLAttributes<HTMLInputElement> = {}) =>
     <input className="campo" value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} {...props} />
@@ -125,6 +138,22 @@ export default function Configuracoes() {
             {listaDesc.map(d => <span key={d} className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 py-1 pl-3 pr-1.5 text-sm text-amber-900 ring-1 ring-inset ring-amber-200">
               {d}<button type="button" title="Remover" onClick={() => mudarDesc(listaDesc.filter(x => x !== d))} className="rounded-full p-0.5 text-amber-700 hover:bg-amber-200/60"><Icone nome="fechar" className="h-3.5 w-3.5" /></button></span>)}
           </div>
+        </Secao>
+
+        <Secao icone="calendario" cor="from-rose-500 to-rose-400" titulo="Feriados" descricao={`Boleto que vence em sábado, domingo ou feriado só conta como vencido depois do próximo dia útil · ${lerFeriados(f.feriados).length} cadastrados`} className="lg:col-span-2">
+          <div className="flex flex-wrap gap-2">
+            <input className="campo w-36" placeholder="DD/MM ou DD/MM/AAAA" value={novoFer.dia} onChange={e => setNovoFer({ ...novoFer, dia: e.target.value })}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarFer() } }} />
+            <input className="campo min-w-0 flex-1" placeholder="Nome (ex.: Aniversário de Iúna)" value={novoFer.nome} onChange={e => setNovoFer({ ...novoFer, nome: e.target.value })}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarFer() } }} />
+            <Botao type="button" variante="secundario" onClick={adicionarFer}><span className="inline-flex items-center gap-1"><Icone nome="mais" className="h-4 w-4" />Adicionar</span></Botao>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {linhasFer.length === 0 && <p className="text-sm text-slate-400">Nenhum feriado cadastrado.</p>}
+            {linhasFer.map(l => <span key={l} className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 py-1 pl-3 pr-1.5 text-sm text-rose-900 ring-1 ring-inset ring-rose-200">
+              <b className="num font-semibold">{l.split(' ')[0]}</b>{l.slice(l.indexOf(' ') + 1 || l.length)}<button type="button" title="Remover" onClick={() => setF({ ...f, feriados: linhasFer.filter(x => x !== l).join('\n') })} className="rounded-full p-0.5 text-rose-700 hover:bg-rose-200/60"><Icone nome="fechar" className="h-3.5 w-3.5" /></button></span>)}
+          </div>
+          <p className="mt-3 text-xs text-slate-500"><b>Calculados sozinhos todo ano</b> (bancos fechados): {[anoAtual, anoAtual + 1].flatMap(a => feriadosMoveis(a)).map(x => `${x.nome} ${data(x.dia)}`).join(' · ')}. Cadastre aqui os feriados <b>municipais</b> e estaduais das praças dos clientes (DD/MM = todo ano; DD/MM/AAAA = só naquele ano).</p>
         </Secao>
 
         {/* Barra fixa de salvar */}
