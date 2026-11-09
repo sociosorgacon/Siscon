@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Despesa } from '../lib/supabase'
-import { useApp, useDados, descricoesPadrao } from '../lib/app'
+import { useApp, useDados, descricoesPadrao, escritorioDe, pixDe } from '../lib/app'
+import { CERTIFICADOS, gerarCobrancaCertificadoPdf, pixCertificado } from '../lib/certificado-pdf'
 import { moeda, data, comp, compParaIso, hojeIso, normaliza } from '../lib/format'
 import { Abas, Avatar, FiltroClientes, clientesDe, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone } from '../components/icones'
 
 type Fixa = { id: string; cliente_id: string; descricao: string; valor: number; observacoes: string | null; ativa: boolean; clientes?: { razao_social: string } }
-type ClienteMin = Pick<Cliente, 'id' | 'razao_social' | 'status'>
+type ClienteMin = Pick<Cliente, 'id' | 'razao_social' | 'status' | 'cnpj'>
 
 const somaMes = (mmaaaa: string, n: number) => {
   const [m, a] = mmaaaa.split('/').map(Number)
@@ -18,7 +19,7 @@ const somaMes = (mmaaaa: string, n: number) => {
 export default function Despesas() {
   const [aba, setAba] = useState<'lancamentos' | 'fixas'>('lancamentos')
   const { config } = useApp()
-  const { dados: clientes } = useDados(() => todos<ClienteMin>((a, b) => supabase.from('clientes').select('id, razao_social, status').order('razao_social').range(a, b)))
+  const { dados: clientes } = useDados(() => todos<ClienteMin>((a, b) => supabase.from('clientes').select('id, razao_social, status, cnpj').order('razao_social').range(a, b)))
   return (
     <>
       {/* Sugestões do campo Descrição: lista padronizada de Configurações (pode-se digitar outra) */}
@@ -33,6 +34,7 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
   const [status, setStatus] = useState('abertas')
   const [busca, setBusca] = useState('')
   const [edit, setEdit] = useState<Partial<Despesa> | null>(null)
+  const [cert, setCert] = useState(false)
   const { dados, recarregar } = useDados(() => todos<Despesa>((a, b) => supabase.from('v_despesas').select('*').order('data', { ascending: false }).range(a, b)))
 
   const [selCli, setSelCli] = useState<Set<string> | null>(null)
@@ -43,7 +45,8 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
   return (
     <>
       <Cabecalho icone="despesas" titulo="Despesas extras" subtitulo="IRPF, alterações, certificados e outros serviços cobrados à parte"
-        acoes={<Botao onClick={() => setEdit({})}>Nova despesa</Botao>} />
+        acoes={<><Botao variante="secundario" onClick={() => setCert(true)}>Certificado Digital (Pix)</Botao><Botao onClick={() => setEdit({})}>Nova despesa</Botao></>} />
+      {cert && <CobrancaCertificado clientes={clientes} fechar={() => setCert(false)} />}
       {dados && (() => {
         const ab = dados.filter(d => d.saldo > 0), mes = new Date().toISOString().slice(0, 7)
         const doMes = dados.filter(d => d.data.startsWith(mes))
@@ -236,5 +239,62 @@ function Fixas({ clientes }: { clientes: ClienteMin[] }) {
         </form>}
       </Modal>
     </>
+  )
+}
+
+/**
+ * Cobrança avulsa de Certificado Digital (A1 PJ / A1 PF): só gera o PDF com QR Code Pix no valor do tipo escolhido.
+ * Não grava nada no Siscon (não entra em despesas, relatórios nem Painel).
+ */
+function CobrancaCertificado({ clientes, fechar }: { clientes: ClienteMin[]; fechar: () => void }) {
+  const { config } = useApp()
+  const avisar = useAviso()
+  const [tipo, setTipo] = useState<string>(CERTIFICADOS[0].id)
+  const [nome, setNome] = useState('')
+  const [qr, setQr] = useState<{ codigo: string; imagem: string } | null>(null)
+  const c = CERTIFICADOS.find(x => x.id === tipo)!
+  // cliente do Siscon escolhido na lista (ou nome digitado livremente)
+  const cli = clientes.find(x => x.razao_social === nome.trim())
+  const pix = pixDe(config)
+  useEffect(() => { pixCertificado(pix, c.valor, c.id).then(setQr) }, [c.valor, c.id, pix.chave])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function gerar() {
+    if (!nome.trim()) return avisar('Escolha a empresa ou escreva o nome do cliente.', 'erro')
+    try { await gerarCobrancaCertificadoPdf({ cliente: nome.trim(), cnpj: cli?.cnpj, tipo: c.id, servico: c.nome, valor: c.valor }, escritorioDe(config), pix) }
+    catch (e) { avisar((e as Error).message, 'erro') }
+  }
+  async function copiar() {
+    if (!qr) return
+    try { await navigator.clipboard.writeText(qr.codigo); avisar('Pix copia e cola copiado.') } catch { avisar('Não foi possível copiar.', 'erro') }
+  }
+
+  return (
+    <Modal titulo="Cobrança de Certificado Digital" aberto fechar={fechar} largura="max-w-xl">
+      <div className="grid gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          {CERTIFICADOS.map(x => <button key={x.id} type="button" onClick={() => setTipo(x.id)}
+            className={`rounded-xl p-3 text-left ring-1 transition ${tipo === x.id ? 'bg-marca-700 text-white ring-marca-700' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>
+            <span className="block text-sm font-semibold">{x.nome.replace('Certificado Digital ', 'Certificado ')}</span>
+            <span className="num block text-lg font-bold">{moeda(x.valor)}</span></button>)}
+        </div>
+        <Campo rotulo="Cliente (escolha a empresa ou escreva o nome)">
+          <input className="campo" list="clientes-cert" value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome da empresa ou da pessoa" autoFocus />
+          <datalist id="clientes-cert">{clientes.filter(x => x.status === 'Ativo').map(x => <option key={x.id} value={x.razao_social} />)}</datalist>
+        </Campo>
+        {cli?.cnpj && <p className="-mt-2 text-xs text-slate-500">Cliente do Siscon · {cli.cnpj.replace(/\D/g, '').length === 11 ? 'CPF' : 'CNPJ'} {cli.cnpj}</p>}
+        <div className="flex items-center gap-4 rounded-xl bg-slate-50 p-4">
+          {qr ? <img src={qr.imagem} alt="QR Code Pix" className="h-32 w-32 rounded bg-white p-1 ring-1 ring-slate-200" /> : <div className="h-32 w-32" />}
+          <div className="min-w-0 text-sm text-slate-600">
+            <p className="font-semibold text-slate-800">Pix de {moeda(c.valor)}</p>
+            <p>Chave Pix (CNPJ): <b className="num text-slate-800">{/^[\d./-]+$/.test(pix.chave) ? pix.chave.replace(/\D/g, '') : pix.chave}</b></p>
+            <p className="mt-1 text-xs text-slate-400">Cobrança avulsa: não é lançada no Siscon e não entra nos relatórios.</p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Botao type="button" variante="secundario" onClick={copiar} disabled={!qr}>Copiar Pix copia e cola</Botao>
+          <Botao type="button" onClick={gerar}>Gerar cobrança (PDF)</Botao>
+        </div>
+      </div>
+    </Modal>
   )
 }
