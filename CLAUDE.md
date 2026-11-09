@@ -73,4 +73,5 @@ Cores da logo: azul **#204879** (`marca-700`) e cinza **#73767B** (`cinza`). Log
 - Prévia sem login: `testes_locais/` (ignorado no Git) tem um Supabase falso com dados exportados; útil para conferir telas com Playwright.
 - Commits pequenos e descritivos em português.
 - Trabalhar no ramo de trabalho; **publicar (push na `main`) só com o "pode publicar" do usuário**. Scripts SQL: colar o conteúdo no chat para o usuário rodar.
+- **Aba aberta antes de uma publicação** dava "Failed to fetch dynamically imported module" (arquivos da versão antiga somem): `main.tsx` escuta `vite:preloadError` e recarrega a página uma vez (no máx. 1 vez a cada 30 s, `sessionStorage siscon_recarregou`) — 09/11/2026.
 - `Cartao` (`ui.tsx`) tem `overflow-hidden`: listas suspensas `absolute` dentro dele ficam cortadas. Usar lista no fluxo normal (como em Receber).

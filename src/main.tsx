@@ -17,6 +17,17 @@ const Relatorios = lazy(() => import('./pages/Relatorios'))
 const Asaas = lazy(() => import('./pages/Asaas'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
 
+// Depois de uma publicação, uma aba que ficou aberta procura arquivos da versão antiga (que deixam de existir) e dá
+// "Failed to fetch dynamically imported module". Nesse caso recarrega a página uma vez para pegar a versão nova.
+window.addEventListener('vite:preloadError', e => {
+  let ultima = 0
+  try { ultima = Number(sessionStorage.getItem('siscon_recarregou') || 0) } catch { /* sem sessionStorage */ }
+  if (Date.now() - ultima < 30000) return   // já recarregou há pouco: deixa o erro aparecer (evita ficar recarregando)
+  try { sessionStorage.setItem('siscon_recarregou', String(Date.now())) } catch { /* ignora */ }
+  e.preventDefault()
+  window.location.reload()
+})
+
 // Link de convite ou de "esqueci minha senha" chega com type=invite/recovery na URL
 const veioDeLink = /type=(invite|recovery)/.test(window.location.hash + window.location.search)
 
