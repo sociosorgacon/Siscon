@@ -4,7 +4,7 @@ import { useApp, useDados } from '../lib/app'
 import { chamarAsaas, type AssinaturaAsaas, type CobrancaAsaas } from '../lib/asaas'
 import AsaasAjustes, { limparCacheAjustes } from './AsaasAjustes'
 import AsaasLote from './AsaasLote'
-import { moeda, data, comp, doc, normaliza, compParaIso } from '../lib/format'
+import { moeda, data, comp, doc, normaliza, compParaIso, boletoVencido } from '../lib/format'
 import { baixarExcel } from '../lib/excel'
 import { Avatar, Botao, Cabecalho, LogoAsaas, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
@@ -180,7 +180,7 @@ function Conferencia() {
         situacao: !c ? 'Não encontrado no Siscon'
           : compIso > compAtualIso && siscon === 0 ? 'Competência ainda não gerada'   // boleto criado antes de o Siscon gerar o honorário
           : Math.abs(dif || 0) > 0.009 ? 'Valor diferente' : 'OK',
-        statusPt: p.status === 'OVERDUE' ? 'Vencido' : 'Pendente' }
+        statusPt: boletoVencido(p.vencimento) ? 'Vencido' : 'Pendente' }   // sábado/domingo = vence na segunda
     }).sort((a, b) => a.vencimento.localeCompare(b.vencimento) || a.nome.localeCompare(b.nome))
 
     return { assinaturas, cobrancas, comProblema: assinaturas.filter(a => a.situacao !== 'OK').length,

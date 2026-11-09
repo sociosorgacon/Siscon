@@ -45,3 +45,13 @@ export const ultimasCompetencias = (base: string, n = 24) => {
 }
 
 export const normaliza = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+/** Vencimento útil: boleto que vence no sábado ou domingo pode ser pago na segunda sem atraso */
+export const vencimentoUtil = (iso: string) => {
+  const d = new Date(iso.slice(0, 10) + 'T12:00:00')
+  const dia = d.getDay()
+  if (dia === 6) d.setDate(d.getDate() + 2); else if (dia === 0) d.setDate(d.getDate() + 1)
+  return d.toLocaleDateString('sv-SE')
+}
+/** Boleto em aberto está vencido só depois do vencimento útil (ignora o OVERDUE que o Asaas marca no fim de semana) */
+export const boletoVencido = (vencimento: string, hoje = hojeIso()) => vencimentoUtil(vencimento) < hoje

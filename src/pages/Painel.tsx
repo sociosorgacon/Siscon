@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, todos, type Honorario, type Recibo, type Despesa } from '../lib/supabase'
 import { useApp, useDados, escritorioDe } from '../lib/app'
 import { chamarAsaas, abrirBoleto } from '../lib/asaas'
-import { moeda, data, ultimasCompetencias, compParaIso } from '../lib/format'
+import { moeda, data, ultimasCompetencias, compParaIso, boletoVencido } from '../lib/format'
 import { Avatar, Cartao, LogoAsaas, Carregando, Vazio, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
 import { imprimirRecibo } from '../lib/recibo-pdf'
@@ -169,8 +169,9 @@ function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: str
   const doMes = (lista || []).filter(x => x.vencimento?.startsWith(mes))
   const grupos = {
     pagos: doMes.filter(x => PAGO.includes(x.status)).sort((a, b) => (b.data_pagamento || '').localeCompare(a.data_pagamento || '')),
-    vencer: doMes.filter(x => x.status === 'PENDING' && x.vencimento >= hojeIso).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
-    vencidos: doMes.filter(x => x.status === 'OVERDUE' || (x.status === 'PENDING' && x.vencimento < hojeIso)).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
+    // sábado/domingo = vence na segunda: o OVERDUE que o Asaas marca no fim de semana ainda conta como "a vencer"
+    vencer: doMes.filter(x => ['PENDING', 'OVERDUE'].includes(x.status) && !boletoVencido(x.vencimento, hojeIso)).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
+    vencidos: doMes.filter(x => ['PENDING', 'OVERDUE'].includes(x.status) && boletoVencido(x.vencimento, hojeIso)).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
   }
   const soma = (l: Cobranca[]) => l.reduce((s, x) => s + Number(x.valor || 0), 0)
   const [a, m] = mes.split('-')
