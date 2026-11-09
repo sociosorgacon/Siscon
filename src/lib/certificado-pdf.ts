@@ -1,4 +1,4 @@
-import { carregarLogo, entregar, nomeArquivo, AZUL, CINZA, FUNDO, type Escritorio } from './pdf-base'
+import { carregarLogo, entregar, AZUL, CINZA, FUNDO, type Escritorio } from './pdf-base'
 import { qrPix, type DadosPix } from './pix'
 import { moeda, doc } from './format'
 
@@ -66,5 +66,8 @@ export async function gerarCobrancaCertificadoPdf(d: { cliente: string; cnpj?: s
 
   pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(150)
   pdf.text(`${esc.nome}${esc.telefone ? ` · ${esc.telefone}` : ''} · Após o pagamento, envie o comprovante.`, C, 285, { align: 'center' })
-  entregar(pdf, `Certificado_${d.tipo.replace(/\W/g, '')}_${nomeArquivo(d.cliente)}.pdf`, true)
+  // baixa direto com o nome pronto para enviar ao cliente: "PIX - Certificado Digital (NOME).pdf"
+  const nome = `PIX - Certificado Digital (${d.cliente.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)})`
+  pdf.setProperties({ title: nome })
+  entregar(pdf, `${nome}.pdf`, false)
 }
