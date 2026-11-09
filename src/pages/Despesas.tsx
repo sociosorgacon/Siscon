@@ -17,20 +17,21 @@ const somaMes = (mmaaaa: string, n: number) => {
 }
 
 export default function Despesas() {
-  const [aba, setAba] = useState<'lancamentos' | 'fixas'>('lancamentos')
+  const [aba, setAba] = useState<'lancamentos' | 'fixas' | 'certificados'>('lancamentos')
   const { config } = useApp()
   const { dados: clientes } = useDados(() => todos<ClienteMin>((a, b) => supabase.from('clientes').select('id, razao_social, status, cnpj').order('razao_social').range(a, b)))
   return (
     <>
       {/* Sugestões do campo Descrição: lista padronizada de Configurações (pode-se digitar outra) */}
       <datalist id="descricoes">{descricoesPadrao(config).map(d => <option key={d} value={d} />)}</datalist>
-      <Abas abas={[['lancamentos', 'Despesas extras'], ['fixas', 'Despesas fixas (recorrentes)']] as const} atual={aba} mudar={setAba} />
-      {aba === 'lancamentos' ? <Lancamentos clientes={clientes || []} /> : <Fixas clientes={clientes || []} />}
+      <Abas abas={[['lancamentos', 'Despesas extras'], ['fixas', 'Despesas fixas (recorrentes)'], ['certificados', 'Certificados Digitais (avulso)']] as const} atual={aba} mudar={setAba} />
+      {aba === 'lancamentos' ? <Lancamentos clientes={clientes || []} irCertificados={() => setAba('certificados')} />
+        : aba === 'fixas' ? <Fixas clientes={clientes || []} /> : <Certificados clientes={clientes || []} />}
     </>
   )
 }
 
-function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
+function Lancamentos({ clientes, irCertificados }: { clientes: ClienteMin[]; irCertificados: () => void }) {
   const [status, setStatus] = useState('abertas')
   const [busca, setBusca] = useState('')
   const [edit, setEdit] = useState<Partial<Despesa> | null>(null)
@@ -46,7 +47,7 @@ function Lancamentos({ clientes }: { clientes: ClienteMin[] }) {
     <>
       <Cabecalho icone="despesas" titulo="Despesas extras" subtitulo="IRPF, alterações, certificados e outros serviços cobrados à parte"
         acoes={<><Botao variante="secundario" onClick={() => setCert(true)}>Certificado Digital (Pix)</Botao><Botao onClick={() => setEdit({})}>Nova despesa</Botao></>} />
-      {cert && <CobrancaCertificado clientes={clientes} fechar={() => setCert(false)} />}
+      {cert && <CobrancaCertificado clientes={clientes} fechar={() => setCert(false)} salvo={() => { setCert(false); irCertificados() }} />}
       {dados && (() => {
         const ab = dados.filter(d => d.saldo > 0), mes = new Date().toISOString().slice(0, 7)
         const doMes = dados.filter(d => d.data.startsWith(mes))
@@ -242,11 +243,13 @@ function Fixas({ clientes }: { clientes: ClienteMin[] }) {
   )
 }
 
+type CertCobrado = { id: string; data: string; cliente_id: string | null; cliente_nome: string; cnpj: string | null; tipo: string; valor: number; pago: boolean; data_pagamento: string | null }
+
 /**
- * Cobrança avulsa de Certificado Digital (A1 PJ / A1 PF): só gera o PDF com QR Code Pix no valor do tipo escolhido.
- * Não grava nada no Siscon (não entra em despesas, relatórios nem Painel).
+ * Cobrança avulsa de Certificado Digital (A1 PJ / A1 PF): gera o PDF com QR Code Pix no valor do tipo escolhido
+ * e registra na lista "Certificados Digitais" (tabela certificados_cobrados — não entra em despesas, relatórios nem Painel).
  */
-function CobrancaCertificado({ clientes, fechar }: { clientes: ClienteMin[]; fechar: () => void }) {
+function CobrancaCertificado({ clientes, fechar, salvo }: { clientes: ClienteMin[]; fechar: () => void; salvo: () => void }) {
   const { config } = useApp()
   const avisar = useAviso()
   const [tipo, setTipo] = useState<string>(CERTIFICADOS[0].id)
@@ -260,8 +263,13 @@ function CobrancaCertificado({ clientes, fechar }: { clientes: ClienteMin[]; fec
 
   async function gerar() {
     if (!nome.trim()) return avisar('Escolha a empresa ou escreva o nome do cliente.', 'erro')
-    try { await gerarCobrancaCertificadoPdf({ cliente: nome.trim(), cnpj: cli?.cnpj, tipo: c.id, servico: c.nome, valor: c.valor }, escritorioDe(config), pix) }
-    catch (e) { avisar((e as Error).message, 'erro') }
+    try {
+      // mesma cobrança ainda não paga (cliente + tipo + valor) não é registrada de novo: só gera o PDF outra vez
+      const ja = ok(await supabase.from('certificados_cobrados').select('id').eq('cliente_nome', nome.trim()).eq('tipo', c.id).eq('valor', c.valor).eq('pago', false).limit(1)) as { id: string }[]
+      if (!ja.length) ok(await supabase.from('certificados_cobrados').insert({ data: hojeIso(), cliente_id: cli?.id || null, cliente_nome: nome.trim(), cnpj: cli?.cnpj || null, tipo: c.id, valor: c.valor }))
+      await gerarCobrancaCertificadoPdf({ cliente: nome.trim(), cnpj: cli?.cnpj, tipo: c.id, servico: c.nome, valor: c.valor }, escritorioDe(config), pix)
+      avisar(ja.length ? 'Cobrança gerada de novo (já estava na lista como não paga).' : 'Cobrança gerada e registrada em Certificados Digitais.'); salvo()
+    } catch (e) { avisar((e as Error).message, 'erro') }
   }
   async function copiar() {
     if (!qr) return
@@ -287,7 +295,7 @@ function CobrancaCertificado({ clientes, fechar }: { clientes: ClienteMin[]; fec
           <div className="min-w-0 text-sm text-slate-600">
             <p className="font-semibold text-slate-800">Pix de {moeda(c.valor)}</p>
             <p>Chave Pix (CNPJ): <b className="num text-slate-800">{/^[\d./-]+$/.test(pix.chave) ? pix.chave.replace(/\D/g, '') : pix.chave}</b></p>
-            <p className="mt-1 text-xs text-slate-400">Cobrança avulsa: não é lançada no Siscon e não entra nos relatórios.</p>
+            <p className="mt-1 text-xs text-slate-400">Cobrança avulsa: fica só na lista Certificados Digitais, não entra em despesas nem nos relatórios.</p>
           </div>
         </div>
         <div className="flex justify-end gap-2">
@@ -296,5 +304,75 @@ function CobrancaCertificado({ clientes, fechar }: { clientes: ClienteMin[]; fec
         </div>
       </div>
     </Modal>
+  )
+}
+
+/** Lista das cobranças avulsas de certificado digital: controle de pago / não pago (fora dos relatórios) */
+function Certificados({ clientes }: { clientes: ClienteMin[] }) {
+  const { config } = useApp()
+  const avisar = useAviso()
+  const [novo, setNovo] = useState(false)
+  const [filtro, setFiltro] = useState<'abertos' | 'pagos' | 'todos'>('abertos')
+  const [busca, setBusca] = useState('')
+  const { dados, recarregar } = useDados(() => todos<CertCobrado>((a, b) => supabase.from('certificados_cobrados').select('*').order('data', { ascending: false }).order('created_at', { ascending: false }).range(a, b)))
+  const lista = (dados || []).filter(x => (filtro === 'todos' || (filtro === 'pagos') === x.pago) && (!busca || normaliza(`${x.cliente_nome} ${x.tipo}`).includes(normaliza(busca))))
+  const abertos = (dados || []).filter(x => !x.pago), pagos = (dados || []).filter(x => x.pago)
+  const soma = (l: CertCobrado[]) => l.reduce((t, x) => t + Number(x.valor), 0)
+
+  async function marcar(x: CertCobrado) {
+    let dp: string | null = null
+    if (!x.pago) {
+      const r = prompt(`Data do pagamento de ${x.cliente_nome} (DD/MM/AAAA):`, data(hojeIso()))
+      if (r == null) return
+      const m = r.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+      if (!m) return avisar('Data inválida. Use DD/MM/AAAA.', 'erro')
+      dp = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+    } else if (!confirm(`Voltar ${x.cliente_nome} para "não pago"?`)) return
+    try { ok(await supabase.from('certificados_cobrados').update({ pago: !x.pago, data_pagamento: dp }).eq('id', x.id)); recarregar() }
+    catch (e) { avisar((e as Error).message, 'erro') }
+  }
+  async function excluir(x: CertCobrado) {
+    if (!confirm(`Excluir a cobrança de ${x.cliente_nome} (${x.tipo}, ${moeda(x.valor)})?`)) return
+    try { ok(await supabase.from('certificados_cobrados').delete().eq('id', x.id)); recarregar(); avisar('Cobrança excluída.') }
+    catch (e) { avisar((e as Error).message, 'erro') }
+  }
+  async function pdf(x: CertCobrado) {
+    const c = CERTIFICADOS.find(k => k.id === x.tipo)
+    try { await gerarCobrancaCertificadoPdf({ cliente: x.cliente_nome, cnpj: x.cnpj, tipo: x.tipo, servico: c?.nome || `Certificado Digital ${x.tipo}`, valor: Number(x.valor) }, escritorioDe(config), pixDe(config)) }
+    catch (e) { avisar((e as Error).message, 'erro') }
+  }
+
+  return (
+    <>
+      <Cabecalho icone="despesas" titulo="Certificados Digitais" subtitulo="Cobranças avulsas com Pix · controle à parte, fora das despesas e dos relatórios"
+        acoes={<Botao onClick={() => setNovo(true)}>Nova cobrança</Botao>} />
+      {novo && <CobrancaCertificado clientes={clientes} fechar={() => setNovo(false)} salvo={() => { setNovo(false); recarregar() }} />}
+      {dados && <Resumo itens={[
+        { rotulo: 'Não pagos', valor: moeda(soma(abertos)), detalhe: `${abertos.length} cobrança(s)`, tom: 'laranja' },
+        { rotulo: 'Pagos', valor: moeda(soma(pagos)), detalhe: `${pagos.length} cobrança(s)`, tom: 'verde' },
+      ]} />}
+      <Cartao>
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
+          <Pilulas opcoes={[['abertos', 'Não pagos', abertos.length], ['pagos', 'Pagos', pagos.length], ['todos', 'Todos', (dados || []).length]] as const} atual={filtro} mudar={setFiltro} />
+          <Busca valor={busca} mudar={setBusca} placeholder="Buscar cliente" />
+        </div>
+        {!dados ? <Carregando /> : lista.length === 0 ? <Vazio texto="Nenhuma cobrança nesta situação." /> :
+          <div className="overflow-x-auto"><table className="tabela">
+            <thead><tr><th>Data</th><th>Cliente</th><th>Tipo</th><th className="text-right">Valor</th><th>Situação</th><th /></tr></thead>
+            <tbody>{lista.map(x => <tr key={x.id}>
+              <td>{data(x.data)}</td>
+              <td className="max-w-xs truncate">{x.cliente_nome}{!x.cliente_id && <span className="ml-1.5 text-[11px] text-slate-400">(não é cliente)</span>}</td>
+              <td>{x.tipo}</td><td className="num text-right">{moeda(x.valor)}</td>
+              <td><button type="button" onClick={() => marcar(x)} title={x.pago ? 'Voltar para não pago' : 'Marcar como pago'}>
+                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${x.pago ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>
+                  {x.pago ? `Pago em ${data(x.data_pagamento)}` : 'Não pago'}</span></button></td>
+              <td className="space-x-3 whitespace-nowrap text-right">
+                {!x.pago && <Botao variante="link" onClick={() => marcar(x)}>Marcar pago</Botao>}
+                <Botao variante="link" onClick={() => pdf(x)}>PDF</Botao>
+                <Botao variante="link" onClick={() => excluir(x)}>Excluir</Botao></td>
+            </tr>)}</tbody>
+          </table></div>}
+      </Cartao>
+    </>
   )
 }
