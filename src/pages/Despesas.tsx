@@ -255,6 +255,8 @@ function CobrancaCertificado({ clientes, fechar, salvo }: { clientes: ClienteMin
   const [tipo, setTipo] = useState<string>(CERTIFICADOS[0].id)
   const [nome, setNome] = useState('')
   const [qr, setQr] = useState<{ codigo: string; imagem: string } | null>(null)
+  const [gerado, setGerado] = useState(false)   // depois de gerar o PDF, a janela fica aberta para copiar o Pix
+  const concluir = () => (gerado ? salvo() : fechar())
   const c = CERTIFICADOS.find(x => x.id === tipo)!
   // cliente do Siscon escolhido na lista (ou nome digitado livremente)
   const cli = clientes.find(x => x.razao_social === nome.trim())
@@ -268,7 +270,7 @@ function CobrancaCertificado({ clientes, fechar, salvo }: { clientes: ClienteMin
       const ja = ok(await supabase.from('certificados_cobrados').select('id').eq('cliente_nome', nome.trim()).eq('tipo', c.id).eq('valor', c.valor).eq('pago', false).limit(1)) as { id: string }[]
       if (!ja.length) ok(await supabase.from('certificados_cobrados').insert({ data: hojeIso(), cliente_id: cli?.id || null, cliente_nome: nome.trim(), cnpj: cli?.cnpj || null, tipo: c.id, valor: c.valor }))
       await gerarCobrancaCertificadoPdf({ cliente: nome.trim(), cnpj: cli?.cnpj, tipo: c.id, servico: c.nome, valor: c.valor }, escritorioDe(config), pix)
-      avisar(ja.length ? 'Cobrança gerada de novo (já estava na lista como não paga).' : 'Cobrança gerada e registrada em Certificados Digitais.'); salvo()
+      avisar(ja.length ? 'Cobrança gerada de novo (já estava na lista como não paga).' : 'Cobrança gerada e registrada em Certificados Digitais.'); setGerado(true)
     } catch (e) { avisar((e as Error).message, 'erro') }
   }
   async function copiar() {
@@ -277,16 +279,16 @@ function CobrancaCertificado({ clientes, fechar, salvo }: { clientes: ClienteMin
   }
 
   return (
-    <Modal titulo="Cobrança de Certificado Digital" aberto fechar={fechar} largura="max-w-xl">
+    <Modal titulo="Cobrança de Certificado Digital" aberto fechar={concluir} largura="max-w-xl">
       <div className="grid gap-4">
         <div className="grid grid-cols-2 gap-3">
-          {CERTIFICADOS.map(x => <button key={x.id} type="button" onClick={() => setTipo(x.id)}
+          {CERTIFICADOS.map(x => <button key={x.id} type="button" onClick={() => { setTipo(x.id); setGerado(false) }}
             className={`rounded-xl p-3 text-left ring-1 transition ${tipo === x.id ? 'bg-marca-700 text-white ring-marca-700' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>
             <span className="block text-sm font-semibold">{x.nome.replace('Certificado Digital ', 'Certificado ')}</span>
             <span className="num block text-lg font-bold">{moeda(x.valor)}</span></button>)}
         </div>
         <Campo rotulo="Cliente (escolha a empresa ou escreva o nome)">
-          <input className="campo" list="clientes-cert" value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome da empresa ou da pessoa" autoFocus />
+          <input className="campo" list="clientes-cert" value={nome} onChange={e => { setNome(e.target.value); setGerado(false) }} placeholder="Nome da empresa ou da pessoa" autoFocus />
           <datalist id="clientes-cert">{clientes.filter(x => x.status === 'Ativo').map(x => <option key={x.id} value={x.razao_social} />)}</datalist>
         </Campo>
         {cli?.cnpj && <p className="-mt-2 text-xs text-slate-500">Cliente do Siscon · {cli.cnpj.replace(/\D/g, '').length === 11 ? 'CPF' : 'CNPJ'} {cli.cnpj}</p>}
@@ -298,10 +300,17 @@ function CobrancaCertificado({ clientes, fechar, salvo }: { clientes: ClienteMin
             <p className="mt-1 text-xs text-slate-400">Cobrança avulsa: fica só na lista Certificados Digitais, não entra em despesas nem nos relatórios.</p>
           </div>
         </div>
-        <div className="flex justify-end gap-2">
+        {gerado ? <>
+          <p className="rounded-lg bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 ring-1 ring-inset ring-emerald-200">
+            PDF baixado: <b>PIX - Certificado Digital ({nome.trim()}).pdf</b>. Copie o Pix copia e cola para mandar junto pelo WhatsApp.</p>
+          <div className="flex justify-end gap-2">
+            <Botao type="button" variante="secundario" onClick={concluir}>Concluir</Botao>
+            <Botao type="button" onClick={copiar} disabled={!qr}>Copiar Pix copia e cola</Botao>
+          </div>
+        </> : <div className="flex justify-end gap-2">
           <Botao type="button" variante="secundario" onClick={copiar} disabled={!qr}>Copiar Pix copia e cola</Botao>
           <Botao type="button" onClick={gerar}>Gerar cobrança (PDF)</Botao>
-        </div>
+        </div>}
       </div>
     </Modal>
   )
@@ -336,6 +345,10 @@ function Certificados({ clientes }: { clientes: ClienteMin[] }) {
     try { ok(await supabase.from('certificados_cobrados').delete().eq('id', x.id)); recarregar(); avisar('Cobrança excluída.') }
     catch (e) { avisar((e as Error).message, 'erro') }
   }
+  async function copiarPix(x: CertCobrado) {
+    try { await navigator.clipboard.writeText((await pixCertificado(pixDe(config), Number(x.valor), x.tipo)).codigo); avisar(`Pix copia e cola de ${x.cliente_nome} copiado.`) }
+    catch { avisar('Não foi possível copiar.', 'erro') }
+  }
   async function pdf(x: CertCobrado) {
     const c = CERTIFICADOS.find(k => k.id === x.tipo)
     try { await gerarCobrancaCertificadoPdf({ cliente: x.cliente_nome, cnpj: x.cnpj, tipo: x.tipo, servico: c?.nome || `Certificado Digital ${x.tipo}`, valor: Number(x.valor) }, escritorioDe(config), pixDe(config)) }
@@ -368,6 +381,7 @@ function Certificados({ clientes }: { clientes: ClienteMin[] }) {
                   {x.pago ? `Pago em ${data(x.data_pagamento)}` : 'Não pago'}</span></button></td>
               <td className="space-x-3 whitespace-nowrap text-right">
                 {!x.pago && <Botao variante="link" onClick={() => marcar(x)}>Marcar pago</Botao>}
+                <Botao variante="link" onClick={() => copiarPix(x)}>Pix copia e cola</Botao>
                 <Botao variante="link" onClick={() => pdf(x)}>PDF</Botao>
                 <Botao variante="link" onClick={() => excluir(x)}>Excluir</Botao></td>
             </tr>)}</tbody>
