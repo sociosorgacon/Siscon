@@ -49,6 +49,7 @@ Cores da logo: azul **#204879** (`marca-700`) e cinza **#73767B** (`cinza`). Log
 ## Backup (10/11/2026)
 - **Manual:** botão "Baixar backup completo" em Configurações (`src/lib/backup.ts`, `TABELAS_BACKUP` = todas as 11 tabelas; avisa se alguma falhar).
 - **Automático diário no Google Drive:** Google Apps Script `scripts/backup-drive.gs` na conta Google dona da pasta (ID `1DuZEetUHLfHp4NXV-h_l2MqZFTGc909o`), gatilho diário 3h–4h (America/Sao_Paulo) → chama a Edge Function **`backup`** (`supabase/functions/backup`, **somente leitura**, Verify JWT **desligado**, exige cabeçalho `X-Backup-Token` = secret `BACKUP_TOKEN`; usa a chave de serviço interna; pagina de 1000 em 1000 ordenando pela chave) → salva `siscon_backup_AAAA-MM-DD_HHMM.zip` (JSON compactado); guarda 30 dias + o do dia 1º de cada mês para sempre; antigos vão para a **lixeira** do Drive; falha → e-mail para a conta dona do script. Token gerado pela função `configurar()` do script (fica só nas Propriedades do script e nos Secrets do Supabase). **Ao criar tabela nova: incluir nas duas listas** (`TABELAS_BACKUP` e `TABELAS` da função).
+- **Instalado e testado pelo usuário em 10/11/2026** (arquivo de teste apareceu na pasta).
 - Ainda não existe **restaurar** pela tela (sugerido ao usuário).
 
 ## Pendências / próximos passos
