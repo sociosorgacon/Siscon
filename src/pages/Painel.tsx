@@ -119,7 +119,7 @@ export default function Painel() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Cartões clicáveis: abrem o relatório do indicador, totalizado por tipo */}
           <Kpi icone="calendario" cor="azul" rotulo="A receber no mês" valor={v(r.aReceber)} detalhe={`Saldo da competência ${c}`} abrir={() => setDet('receber')} />
-          <Kpi icone="ok" cor="verde" rotulo="Recebido no mês" valor={v(r.recebido)} detalhe={`Baixas em ${mR}/${aR}${r.certMes ? ` · certificados ${v(r.certMes)}` : ''}`} abrir={() => setDet('recebido')} />
+          <Kpi icone="ok" cor="verde" rotulo="Recebido no mês" valor={v(r.recebido)} detalhe={`Baixas em ${mR}/${aR}${r.certMes ? ` · inclui certificados digitais` : ''}`} abrir={() => setDet('recebido')} />
           <Kpi icone="alerta" cor="vermelho" rotulo="Total em atraso" valor={v(r.atraso)} detalhe={`Competências anteriores a ${c}`} abrir={() => setDet('atraso')} />
           <Kpi icone="clientes" cor="laranja" rotulo="Clientes inadimplentes" valor={r.ranking.length} detalhe="Com honorário de competência anterior" abrir={() => setDet('inadimplentes')} />
         </div>

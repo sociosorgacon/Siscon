@@ -62,8 +62,10 @@ export default function DetalheIndicador({ qual, c, iso, pRec, hon, des, fechar 
         ...des.filter(d => inad.has(d.cliente_id) && d.competencia < iso && d.saldo > 0.009).map(deDes)]
     }
     if (!recs || !certs) return null
-    return [...certs.map(x => ({ tipo: 'Certificado Digital (líquido)', cliente: x.cliente_nome, ref: `Certificado ${x.tipo} · bruto ${moeda(Number(x.valor))}`,
-      competencia: x.data, data: x.data_pagamento, valor: liquidoCert(x) })), ...recs.flatMap(r => r.recibo_itens.map(i => ({
+    // certificados digitais: uma linha só com o total líquido do mês (sem separar PF/PJ nem por cliente)
+    const certLinha: Linha[] = certs.length ? [{ tipo: 'Certificados Digitais', cliente: `${certs.length} certificado(s)`, ref: 'Valor líquido (recebido − custo da SIC)',
+      competencia: `${pRec}-01`, data: certs.map(x => x.data_pagamento).sort().pop()!, valor: Math.round(certs.reduce((t, x) => t + liquidoCert(x), 0) * 100) / 100 }] : []
+    return [...certLinha, ...recs.flatMap(r => r.recibo_itens.map(i => ({
       tipo: i.tipo === 'Honorário Contábil' ? 'Honorários' : i.tipo === 'Juros/Multa Asaas' ? 'Juros/Multa (Asaas)' : i.tipo === 'Excedente Asaas' ? 'Excedente (Asaas)' : tipoDespesa(i.descricao, padroes),
       cliente: i.cliente_nome || r.cliente_nome, ref: i.descricao + (r.numero ? ` · recibo ${r.numero}` : r.metodo_pagamento ? ` · ${r.metodo_pagamento}` : ''),
       competencia: i.competencia, data: r.data_pagamento, valor: i.valor,
