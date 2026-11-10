@@ -79,7 +79,7 @@ export default function Configuracoes() {
   }
 
   async function backup() {
-    try { await baixarBackup(); avisar('Backup baixado. Guarde em local seguro: contém dados de clientes.') }
+    try { const f = await baixarBackup(); avisar(f.length ? `Backup baixado, mas sem: ${f.join(', ')}.` : 'Backup baixado. Guarde em local seguro: contém dados de clientes.', f.length ? 'erro' : undefined) }
     catch (e) { avisar((e as Error).message, 'erro') }
   }
 

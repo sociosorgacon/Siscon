@@ -1,15 +1,21 @@
 import { supabase, todos } from './supabase'
 import { hojeIso } from './format'
 
+/** Todas as tabelas do Siscon (manter igual à lista da função de backup automático: supabase/functions/backup) */
+export const TABELAS_BACKUP = ['configuracoes', 'salarios_minimos', 'clientes', 'honorarios', 'despesas', 'despesas_fixas',
+  'recibos', 'recibo_itens', 'asaas_eventos', 'asaas_cobrancas', 'certificados_cobrados'] as const
+
 /** Baixa um JSON com todas as tabelas do Siscon (contém dados de clientes: guardar em local seguro) */
 export async function baixarBackup() {
-  const tabelas = ['configuracoes', 'clientes', 'honorarios', 'despesas', 'recibos', 'recibo_itens', 'despesas_fixas', 'asaas_eventos'] as const
-  const dados: Record<string, unknown> = { exportado_em: new Date().toISOString() }
-  for (const t of tabelas) {
+  const dados: Record<string, unknown> = { exportado_em: new Date().toISOString(), origem: 'manual' }
+  const faltando: string[] = []
+  for (const t of TABELAS_BACKUP) {
     try { dados[t] = await todos((a, b) => supabase.from(t).select('*').range(a, b)) }
-    catch (e) { if (t === 'asaas_eventos' || t === 'despesas_fixas') dados[t] = []; else throw e }
+    catch { dados[t] = []; faltando.push(t) }   // tabela ainda não criada no banco: segue sem ela
   }
+  if (faltando.length) dados.tabelas_com_erro = faltando
   const url = URL.createObjectURL(new Blob([JSON.stringify(dados)], { type: 'application/json' }))
   Object.assign(document.createElement('a'), { href: url, download: `siscon_backup_${hojeIso()}.json` }).click()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 30000)
+  return faltando
 }
