@@ -134,7 +134,6 @@ Deno.serve(async (req) => {
       return resposta({ id: p.id, boleto: p.bankSlipUrl || null, fatura: p.invoiceUrl || null })
     }
 
-    // Lote do mês por GRUPO de clientes do Asaas (ex.: Impressos, Acessórias): boletos pendentes com vencimento no mês
     // Cancela (exclui) um boleto EM ABERTO no Asaas. Boleto pago não pode ser cancelado (só estornado, pelo painel do Asaas).
     if (acao === 'cancelar_boleto') {
       const { id, fatura, vencimento } = corpoReq as { id?: string; fatura?: string; vencimento?: string }
@@ -152,6 +151,7 @@ Deno.serve(async (req) => {
       return resposta({ ok: true, id: p.id, valor: p.value, vencimento: p.dueDate })
     }
 
+    // Lote do mês por GRUPO de clientes do Asaas (ex.: Impressos, Acessórias): boletos pendentes com vencimento no mês
     if (acao === 'lote') {
       const { grupo, mes } = corpoReq as { grupo: string; mes: string }   // mes = 'AAAA-MM'
       if (!grupo || !/^\d{4}-\d{2}$/.test(mes || '')) return resposta({ erro: 'Informe o grupo e o mês' }, 400)
