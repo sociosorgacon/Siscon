@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Despesa } from '../lib/supabase'
 import { useApp, useDados, descricoesPadrao, escritorioDe, pixDe } from '../lib/app'
-import { CERTIFICADOS, gerarCobrancaCertificadoPdf, pixCertificado } from '../lib/certificado-pdf'
+import { CERTIFICADOS, gerarCobrancaCertificadoPdf, pixCertificado, liquidoCert } from '../lib/certificado-pdf'
+import { lerExtrato, semelhanca, type Credito } from '../lib/extrato-banco'
 import { moeda, data, comp, compParaIso, hojeIso, normaliza } from '../lib/format'
 import { Abas, Avatar, FiltroClientes, clientesDe, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone } from '../components/icones'
@@ -243,7 +244,7 @@ function Fixas({ clientes }: { clientes: ClienteMin[] }) {
   )
 }
 
-type CertCobrado = { id: string; data: string; cliente_id: string | null; cliente_nome: string; cnpj: string | null; tipo: string; valor: number; pago: boolean; data_pagamento: string | null }
+type CertCobrado = { id: string; data: string; cliente_id: string | null; cliente_nome: string; cnpj: string | null; tipo: string; valor: number; valor_liquido: number | null; pago: boolean; data_pagamento: string | null; extrato_ref: string | null }
 
 /**
  * Cobrança avulsa de Certificado Digital (A1 PJ / A1 PF): gera o PDF com QR Code Pix no valor do tipo escolhido
@@ -268,7 +269,7 @@ function CobrancaCertificado({ clientes, fechar, salvo }: { clientes: ClienteMin
     try {
       // mesma cobrança ainda não paga (cliente + tipo + valor) não é registrada de novo: só gera o PDF outra vez
       const ja = ok(await supabase.from('certificados_cobrados').select('id').eq('cliente_nome', nome.trim()).eq('tipo', c.id).eq('valor', c.valor).eq('pago', false).limit(1)) as { id: string }[]
-      if (!ja.length) ok(await supabase.from('certificados_cobrados').insert({ data: hojeIso(), cliente_id: cli?.id || null, cliente_nome: nome.trim(), cnpj: cli?.cnpj || null, tipo: c.id, valor: c.valor }))
+      if (!ja.length) ok(await supabase.from('certificados_cobrados').insert({ data: hojeIso(), cliente_id: cli?.id || null, cliente_nome: nome.trim(), cnpj: cli?.cnpj || null, tipo: c.id, valor: c.valor, valor_liquido: c.liquido }))
       await gerarCobrancaCertificadoPdf({ cliente: nome.trim(), cnpj: cli?.cnpj, tipo: c.id, servico: c.nome, valor: c.valor }, escritorioDe(config), pix)
       avisar(ja.length ? 'Cobrança gerada de novo (já estava na lista como não paga).' : 'Cobrança gerada e registrada em Certificados Digitais.'); setGerado(true)
     } catch (e) { avisar((e as Error).message, 'erro') }
@@ -321,6 +322,7 @@ function Certificados({ clientes }: { clientes: ClienteMin[] }) {
   const { config } = useApp()
   const avisar = useAviso()
   const [novo, setNovo] = useState(false)
+  const [extrato, setExtrato] = useState(false)
   const [filtro, setFiltro] = useState<'abertos' | 'pagos' | 'todos'>('abertos')
   const [busca, setBusca] = useState('')
   const { dados, recarregar } = useDados(() => todos<CertCobrado>((a, b) => supabase.from('certificados_cobrados').select('*').order('data', { ascending: false }).order('created_at', { ascending: false }).range(a, b)))
@@ -337,7 +339,7 @@ function Certificados({ clientes }: { clientes: ClienteMin[] }) {
       if (!m) return avisar('Data inválida. Use DD/MM/AAAA.', 'erro')
       dp = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
     } else if (!confirm(`Voltar ${x.cliente_nome} para "não pago"?`)) return
-    try { ok(await supabase.from('certificados_cobrados').update({ pago: !x.pago, data_pagamento: dp }).eq('id', x.id)); recarregar() }
+    try { ok(await supabase.from('certificados_cobrados').update({ pago: !x.pago, data_pagamento: dp, ...(x.pago ? { extrato_ref: null } : {}) }).eq('id', x.id)); recarregar() }
     catch (e) { avisar((e as Error).message, 'erro') }
   }
   async function excluir(x: CertCobrado) {
@@ -358,11 +360,13 @@ function Certificados({ clientes }: { clientes: ClienteMin[] }) {
   return (
     <>
       <Cabecalho icone="despesas" titulo="Certificados Digitais" subtitulo="Cobranças avulsas com Pix · controle à parte, fora das despesas e dos relatórios"
-        acoes={<Botao onClick={() => setNovo(true)}>Nova cobrança</Botao>} />
+        acoes={<><Botao variante="secundario" onClick={() => setExtrato(true)}>Importar extrato Sicoob</Botao><Botao onClick={() => setNovo(true)}>Nova cobrança</Botao></>} />
       {novo && <CobrancaCertificado clientes={clientes} fechar={() => setNovo(false)} salvo={() => { setNovo(false); recarregar() }} />}
+      {extrato && dados && <ImportarExtratoCertificados certs={dados} fechar={() => setExtrato(false)} salvo={() => { setExtrato(false); recarregar() }} />}
       {dados && <Resumo itens={[
         { rotulo: 'Não pagos', valor: moeda(soma(abertos)), detalhe: `${abertos.length} cobrança(s)`, tom: 'laranja' },
         { rotulo: 'Pagos', valor: moeda(soma(pagos)), detalhe: `${pagos.length} cobrança(s)`, tom: 'verde' },
+        { rotulo: 'Líquido recebido', valor: moeda(pagos.reduce((t, x) => t + liquidoCert(x), 0)), detalhe: 'Entra no "Recebido no mês" do Painel', tom: 'azul' },
       ]} />}
       <Cartao>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3">
@@ -371,14 +375,14 @@ function Certificados({ clientes }: { clientes: ClienteMin[] }) {
         </div>
         {!dados ? <Carregando /> : lista.length === 0 ? <Vazio texto="Nenhuma cobrança nesta situação." /> :
           <div className="overflow-x-auto"><table className="tabela">
-            <thead><tr><th>Data</th><th>Cliente</th><th>Tipo</th><th className="text-right">Valor</th><th>Situação</th><th /></tr></thead>
+            <thead><tr><th>Data</th><th>Cliente</th><th>Tipo</th><th className="text-right">Valor</th><th className="text-right">Líquido</th><th>Situação</th><th /></tr></thead>
             <tbody>{lista.map(x => <tr key={x.id}>
               <td>{data(x.data)}</td>
               <td className="max-w-xs truncate">{x.cliente_nome}{!x.cliente_id && <span className="ml-1.5 text-[11px] text-slate-400">(não é cliente)</span>}</td>
-              <td>{x.tipo}</td><td className="num text-right">{moeda(x.valor)}</td>
+              <td>{x.tipo}</td><td className="num text-right">{moeda(x.valor)}</td><td className="num text-right text-slate-500">{moeda(liquidoCert(x))}</td>
               <td><button type="button" onClick={() => marcar(x)} title={x.pago ? 'Voltar para não pago' : 'Marcar como pago'}>
                 <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${x.pago ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>
-                  {x.pago ? `Pago em ${data(x.data_pagamento)}` : 'Não pago'}</span></button></td>
+                  {x.pago ? `Pago em ${data(x.data_pagamento)}${x.extrato_ref ? ' · extrato' : ''}` : 'Não pago'}</span></button></td>
               <td className="space-x-3 whitespace-nowrap text-right">
                 {!x.pago && <Botao variante="link" onClick={() => marcar(x)}>Marcar pago</Botao>}
                 <Botao variante="link" onClick={() => copiarPix(x)}>Pix copia e cola</Botao>
@@ -388,5 +392,111 @@ function Certificados({ clientes }: { clientes: ClienteMin[] }) {
           </table></div>}
       </Cartao>
     </>
+  )
+}
+
+type LinhaExtrato = Credito & { tipo: string; alvo: string; sugestao: string; jaUsado: boolean }
+
+/**
+ * Importa o extrato do Sicoob (OFX ou PDF), acha os créditos de 115,00 (A1 PF) e 160,00 (A1 PJ) e propõe a baixa
+ * das cobranças de certificado em aberto (pelo nome no histórico do extrato). Nada é gravado sem confirmar.
+ */
+function ImportarExtratoCertificados({ certs, fechar, salvo }: { certs: CertCobrado[]; fechar: () => void; salvo: () => void }) {
+  const avisar = useAviso()
+  const [linhas, setLinhas] = useState<LinhaExtrato[] | null>(null)
+  const [outros, setOutros] = useState(0)
+  const [lendo, setLendo] = useState(false)
+  const [gravando, setGravando] = useState(false)
+  const abertos = certs.filter(x => !x.pago)
+
+  async function ler(arquivo?: File) {
+    if (!arquivo) return
+    setLendo(true)
+    try {
+      const creditos = await lerExtrato(arquivo)
+      const usados = new Set(certs.map(x => x.extrato_ref).filter(Boolean))
+      const doCert = creditos.filter(c => CERTIFICADOS.some(t => Math.abs(t.valor - c.valor) < 0.005))
+      setOutros(creditos.length - doCert.length)
+      const reservados = new Set<string>()
+      // primeiro os créditos com nome reconhecido, para não "roubarem" a cobrança de quem tem nome parecido
+      const propostas = doCert.map(c => {
+        const tipo = CERTIFICADOS.find(t => Math.abs(t.valor - c.valor) < 0.005)!.id
+        const cands = abertos.filter(x => x.tipo === tipo && Math.abs(Number(x.valor) - c.valor) < 0.005)
+          .map(x => ({ x, p: semelhanca(x.cliente_nome, c.historico) })).sort((a, b) => b.p - a.p)
+        return { c, tipo, cands }
+      }).sort((a, b) => (b.cands[0]?.p || 0) - (a.cands[0]?.p || 0))
+      const res: LinhaExtrato[] = propostas.map(({ c, tipo, cands }) => {
+        const jaUsado = usados.has(c.ref)
+        const livre = cands.filter(k => !reservados.has(k.x.id))
+        let alvo = '', sugestao = ''
+        if (!jaUsado && livre[0]?.p > 0) { alvo = livre[0].x.id; reservados.add(alvo); sugestao = 'nome confere' }
+        else if (!jaUsado && livre.length === 1) { sugestao = `possível: ${livre[0].x.cliente_nome} (nome não confere — confira)` }
+        return { ...c, tipo, alvo, sugestao, jaUsado }
+      }).sort((a, b) => a.data.localeCompare(b.data))
+      setLinhas(res)
+      if (!creditos.length) avisar('Nenhum crédito encontrado no arquivo.', 'erro')
+    } catch (e) { avisar((e as Error).message, 'erro') } finally { setLendo(false) }
+  }
+
+  const mudar = (ref: string, alvo: string) => setLinhas(l => l && l.map(x => x.ref === ref ? { ...x, alvo } : x))
+  const escolhidas = (linhas || []).filter(x => x.alvo && !x.jaUsado)
+  const liquido = escolhidas.reduce((t, x) => t + (CERTIFICADOS.find(c => c.id === x.tipo)?.liquido || 0), 0)
+
+  async function confirmar() {
+    if (!escolhidas.length) return avisar('Nenhum crédito escolhido para baixa.', 'erro')
+    const repetido = escolhidas.map(x => x.alvo).filter(a => a !== 'novo').find((a, i, arr) => arr.indexOf(a) !== i)
+    if (repetido) return avisar('A mesma cobrança foi escolhida para dois créditos. Corrija antes de confirmar.', 'erro')
+    setGravando(true)
+    try {
+      for (const x of escolhidas) {
+        const t = CERTIFICADOS.find(c => c.id === x.tipo)!
+        if (x.alvo === 'novo') ok(await supabase.from('certificados_cobrados').insert({ data: x.data, cliente_nome: (x.historico || 'Recebido pelo extrato').slice(0, 120),
+          tipo: t.id, valor: t.valor, valor_liquido: t.liquido, pago: true, data_pagamento: x.data, extrato_ref: x.ref, observacoes: 'Registrado pelo extrato Sicoob (sem cobrança gerada)' }))
+        else ok(await supabase.from('certificados_cobrados').update({ pago: true, data_pagamento: x.data, extrato_ref: x.ref }).eq('id', x.alvo).eq('pago', false))
+      }
+      avisar(`${escolhidas.length} certificado(s) baixado(s) · líquido ${moeda(liquido)}.`); salvo()
+    } catch (e) { avisar((e as Error).message, 'erro') } finally { setGravando(false) }
+  }
+
+  return (
+    <Modal titulo="Baixa de certificados pelo extrato do Sicoob" aberto fechar={fechar} largura="max-w-4xl">
+      <div className="grid gap-4">
+        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-slate-300 px-4 py-5 text-center text-sm text-slate-500 hover:border-marca-700 hover:bg-slate-50">
+          <Icone nome="baixar" className="h-5 w-5 rotate-180 text-marca-700" />
+          <b className="text-slate-700">{lendo ? 'Lendo o extrato…' : 'Escolher o extrato do Sicoob (OFX ou PDF)'}</b>
+          <span>Procura os créditos de {CERTIFICADOS.map(c => `${moeda(c.valor)} (${c.id})`).join(' e ')}</span>
+          <input type="file" accept=".ofx,.pdf,application/pdf" className="hidden" onChange={e => { ler(e.target.files?.[0]); e.target.value = '' }} />
+        </label>
+        {linhas && (linhas.length === 0 ? <Vazio texto={`Nenhum crédito de certificado no extrato${outros ? ` (${outros} outro(s) crédito(s) ignorado(s))` : ''}.`} /> : <>
+          <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200">
+            <table className="tabela">
+              <thead><tr><th>Data</th><th>Histórico no extrato</th><th className="text-right">Valor</th><th>Baixar a cobrança</th></tr></thead>
+              <tbody>{linhas.map(x => {
+                const opcoes = abertos.filter(c => c.tipo === x.tipo && Math.abs(Number(c.valor) - x.valor) < 0.005)
+                return <tr key={x.ref} className={x.jaUsado ? 'opacity-50' : ''}>
+                  <td className="whitespace-nowrap">{data(x.data)}</td>
+                  <td className="max-w-xs"><span className="block truncate" title={x.historico}>{x.historico || '—'}</span>
+                    {x.sugestao && <span className={`block text-[11px] ${x.alvo ? 'text-emerald-600' : 'text-amber-600'}`}>{x.sugestao}</span>}</td>
+                  <td className="num whitespace-nowrap text-right">{moeda(x.valor)} <span className="text-[11px] text-slate-400">{x.tipo}</span></td>
+                  <td>{x.jaUsado ? <span className="text-xs text-slate-500">Já baixado antes</span> :
+                    <select className="campo !h-8 w-64 text-xs" value={x.alvo} onChange={e => mudar(x.ref, e.target.value)}>
+                      <option value="">Não é certificado / ignorar</option>
+                      {opcoes.map(c => <option key={c.id} value={c.id}>{c.cliente_nome} · cobrado em {data(c.data)}</option>)}
+                      <option value="novo">Registrar como certificado pago (sem cobrança)</option>
+                    </select>}</td>
+                </tr>
+              })}</tbody>
+            </table>
+          </div>
+          <p className="text-xs text-slate-500">Créditos com o nome da cobrança no histórico já vêm escolhidos. Os demais ficam em "ignorar": escolha a cobrança se for certificado.
+            {outros > 0 && ` ${outros} crédito(s) de outros valores foram ignorados.`}</p>
+          <div className="flex items-center justify-end gap-3">
+            <span className="text-sm text-slate-600">{escolhidas.length} para baixar · líquido <b className="num">{moeda(liquido)}</b></span>
+            <Botao type="button" variante="secundario" onClick={fechar}>Cancelar</Botao>
+            <Botao type="button" onClick={confirmar} disabled={gravando || !escolhidas.length}>{gravando ? 'Gravando…' : 'Confirmar baixas'}</Botao>
+          </div>
+        </>)}
+      </div>
+    </Modal>
   )
 }

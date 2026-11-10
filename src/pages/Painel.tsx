@@ -7,6 +7,7 @@ import { moeda, data, ultimasCompetencias, compParaIso, boletoVencido } from '..
 import { Avatar, Cartao, LogoAsaas, Carregando, Vazio, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
 import { imprimirRecibo } from '../lib/recibo-pdf'
+import { liquidoCert } from '../lib/certificado-pdf'
 import DetalheIndicador, { type Indicador as QualIndicador } from './PainelDetalhe'
 
 /** Mês seguinte à competência, como prefixo 'AAAA-MM' (regra do "Recebido no mês") */
@@ -28,12 +29,15 @@ export default function Painel() {
   const c = compSel || config.competencia_atual
 
   const { dados } = useDados(async () => {
-    const [hon, rec, des] = await Promise.all([
+    const [hon, rec, des, cert] = await Promise.all([
       todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').range(a, b)),
       todos<Recibo>((a, b) => supabase.from('recibos').select('*').eq('cancelado', false).order('data_pagamento', { ascending: false }).order('created_at', { ascending: false }).range(a, b)),
       todos<Despesa>((a, b) => supabase.from('v_despesas').select('*').range(a, b)),
+      // certificados digitais pagos (cobrança avulsa): só o valor líquido entra no "Recebido no mês"
+      todos<{ tipo: string; valor: number; valor_liquido: number | null; data_pagamento: string }>((a, b) => supabase.from('certificados_cobrados')
+        .select('tipo, valor, valor_liquido, data_pagamento').eq('pago', true).not('data_pagamento', 'is', null).range(a, b)).catch(() => []),
     ])
-    return { hon, rec, des }
+    return { hon, rec, des, cert }
   })
 
   // Saldo da conta Asaas (Edge Function); falha não atrapalha o resto do Painel
@@ -61,7 +65,8 @@ export default function Painel() {
     const aReceber = dados.hon.filter(h => h.competencia === iso).reduce((s, h) => s + h.saldo, 0)
       + dados.des.filter(d => d.competencia === iso).reduce((s, d) => s + d.saldo, 0)
     const pRec = mesSeguinte(c)
-    const recebido = dados.rec.filter(x => x.data_pagamento.startsWith(pRec)).reduce((s, x) => s + x.valor, 0)
+    const certMes = dados.cert.filter(x => x.data_pagamento.startsWith(pRec)).reduce((s, x) => s + liquidoCert(x), 0)
+    const recebido = dados.rec.filter(x => x.data_pagamento.startsWith(pRec)).reduce((s, x) => s + x.valor, 0) + certMes
     const honAtraso = dados.hon.filter(h => h.competencia < iso && h.saldo > 0)
     const atraso = honAtraso.reduce((s, h) => s + h.saldo, 0) + dados.des.filter(d => d.competencia < iso).reduce((s, d) => s + d.saldo, 0)
     const porCliente = new Map<string, { nome: string; total: number }>()
@@ -75,7 +80,7 @@ export default function Painel() {
       const h = dados.hon.filter(x => x.competencia === i)
       return { mes: m, recebido: h.reduce((s, x) => s + x.valor_pago_acumulado, 0), pendente: h.reduce((s, x) => s + x.saldo, 0) }
     })
-    return { aReceber, recebido, atraso, ranking, grafico, pRec, ultimos: dados.rec.slice(0, 8) }
+    return { aReceber, recebido, certMes, atraso, ranking, grafico, pRec, ultimos: dados.rec.slice(0, 8) }
   }, [dados, c, comps])
 
   const [aR, mR] = r?.pRec.split('-') || []
@@ -114,7 +119,7 @@ export default function Painel() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Cartões clicáveis: abrem o relatório do indicador, totalizado por tipo */}
           <Kpi icone="calendario" cor="azul" rotulo="A receber no mês" valor={v(r.aReceber)} detalhe={`Saldo da competência ${c}`} abrir={() => setDet('receber')} />
-          <Kpi icone="ok" cor="verde" rotulo="Recebido no mês" valor={v(r.recebido)} detalhe={`Baixas em ${mR}/${aR}`} abrir={() => setDet('recebido')} />
+          <Kpi icone="ok" cor="verde" rotulo="Recebido no mês" valor={v(r.recebido)} detalhe={`Baixas em ${mR}/${aR}${r.certMes ? ` · certificados ${v(r.certMes)}` : ''}`} abrir={() => setDet('recebido')} />
           <Kpi icone="alerta" cor="vermelho" rotulo="Total em atraso" valor={v(r.atraso)} detalhe={`Competências anteriores a ${c}`} abrir={() => setDet('atraso')} />
           <Kpi icone="clientes" cor="laranja" rotulo="Clientes inadimplentes" valor={r.ranking.length} detalhe="Com honorário de competência anterior" abrir={() => setDet('inadimplentes')} />
         </div>

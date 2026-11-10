@@ -4,9 +4,12 @@ import { moeda, doc } from './format'
 
 /** Tipos de certificado digital cobrados à parte (cobrança avulsa: não é lançada no Siscon nem entra nos relatórios) */
 export const CERTIFICADOS = [
-  { id: 'A1 PJ', nome: 'Certificado Digital A1 PJ', valor: 160 },
-  { id: 'A1 PF', nome: 'Certificado Digital A1 PF', valor: 115 },
+  { id: 'A1 PJ', nome: 'Certificado Digital A1 PJ', valor: 160, liquido: 95 },   // líquido = o que fica para o escritório
+  { id: 'A1 PF', nome: 'Certificado Digital A1 PF', valor: 115, liquido: 60 },
 ] as const
+/** Valor líquido de um certificado já registrado (o gravado; senão, pelo tipo) */
+export const liquidoCert = (x: { tipo: string; valor: number; valor_liquido?: number | null }) =>
+  x.valor_liquido != null ? Number(x.valor_liquido) : CERTIFICADOS.find(c => c.id === x.tipo)?.liquido ?? Number(x.valor)
 
 /** Pix do certificado: valor exato e mensagem curta para aparecer no app do banco */
 export const pixCertificado = (pix: Omit<DadosPix, 'valor'>, valor: number, tipo: string) =>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { liquidoCert } from '../lib/certificado-pdf'
 import { supabase, todos, type Honorario, type Despesa, type Recibo } from '../lib/supabase'
 import { useApp, useDados, descricoesPadrao } from '../lib/app'
 import { moeda, data, comp, normaliza } from '../lib/format'
@@ -45,6 +46,10 @@ export default function DetalheIndicador({ qual, c, iso, pRec, hon, des, fechar 
   const { dados: recs } = useDados(async () => qual !== 'recebido' ? [] :
     todos<Recibo & { recibo_itens: ItemRec[] }>((a, b) => supabase.from('recibos').select('*, recibo_itens(*)').eq('cancelado', false)
       .gte('data_pagamento', `${pRec}-01`).lt('data_pagamento', fim).order('data_pagamento').range(a, b)), [qual, pRec])
+  // certificados digitais pagos no mês (cobrança avulsa): entram pelo valor líquido
+  const { dados: certs } = useDados(async () => qual !== 'recebido' ? [] :
+    todos<{ cliente_nome: string; tipo: string; valor: number; valor_liquido: number | null; data: string; data_pagamento: string }>((a, b) => supabase.from('certificados_cobrados')
+      .select('cliente_nome, tipo, valor, valor_liquido, data, data_pagamento').eq('pago', true).gte('data_pagamento', `${pRec}-01`).lt('data_pagamento', fim).range(a, b)).catch(() => []), [qual, pRec])
 
   const linhas = useMemo<Linha[] | null>(() => {
     const deHon = (h: Honorario): Linha => ({ tipo: 'Honorários', cliente: h.cliente_nome, ref: `Honorários ${comp(h.competencia)}`, competencia: h.competencia, data: h.vencimento, valor: h.saldo })
@@ -56,13 +61,14 @@ export default function DetalheIndicador({ qual, c, iso, pRec, hon, des, fechar 
       return [...hon.filter(h => inad.has(h.cliente_id) && h.competencia < iso && h.saldo > 0.009).map(deHon),
         ...des.filter(d => inad.has(d.cliente_id) && d.competencia < iso && d.saldo > 0.009).map(deDes)]
     }
-    if (!recs) return null
-    return recs.flatMap(r => r.recibo_itens.map(i => ({
+    if (!recs || !certs) return null
+    return [...certs.map(x => ({ tipo: 'Certificado Digital (líquido)', cliente: x.cliente_nome, ref: `Certificado ${x.tipo} · bruto ${moeda(Number(x.valor))}`,
+      competencia: x.data, data: x.data_pagamento, valor: liquidoCert(x) })), ...recs.flatMap(r => r.recibo_itens.map(i => ({
       tipo: i.tipo === 'Honorário Contábil' ? 'Honorários' : i.tipo === 'Juros/Multa Asaas' ? 'Juros/Multa (Asaas)' : i.tipo === 'Excedente Asaas' ? 'Excedente (Asaas)' : tipoDespesa(i.descricao, padroes),
       cliente: i.cliente_nome || r.cliente_nome, ref: i.descricao + (r.numero ? ` · recibo ${r.numero}` : r.metodo_pagamento ? ` · ${r.metodo_pagamento}` : ''),
       competencia: i.competencia, data: r.data_pagamento, valor: i.valor,
-    })))
-  }, [qual, hon, des, iso, recs, padroes])
+    })))]
+  }, [qual, hon, des, iso, recs, certs, padroes])
 
   const resumo = useMemo(() => {
     const m = new Map<string, { tipo: string; qtd: number; total: number }>()
