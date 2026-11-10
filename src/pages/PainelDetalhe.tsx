@@ -17,6 +17,8 @@ const base = (s: string) => s.replace(/\s*\(\d+\/\d+\)\s*$/, '').replace(/^\s*\d
 
 /** Tipo da despesa = descrição padronizada (Configurações) que ela contém; senão a própria descrição limpa */
 export function tipoDespesa(descricao: string, padroes: string[]) {
+  // certificado digital (PF, PJ, A1, A3...) = um tipo só (pedido do usuário, 10/11/2026)
+  if (/certificado\s+digital/i.test(descricao)) return 'Certificados Digitais'
   const d = sem(base(descricao))
   const palavras = new Set(d.split(' '))
   for (const p of padroes) {
