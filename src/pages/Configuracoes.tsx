@@ -5,6 +5,7 @@ import { baixarBackup } from '../lib/backup'
 import { moeda, comp, lerFeriados, feriadosMoveis, data } from '../lib/format'
 import { Botao, Cabecalho, Campo, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
+import RestaurarBackup from '../components/RestaurarBackup'
 
 const descricoes: Partial<Record<keyof Config, string>> = {
   salario_minimo: 'Salário mínimo vigente', vigencia_salario: 'Data de vigência do salário',
@@ -165,6 +166,10 @@ export default function Configuracoes() {
               {l.includes('|') && <span className="rounded-full bg-white px-2 text-[11px] font-medium text-rose-700 ring-1 ring-rose-200">{l.split('|')[1].trim()}</span>}<button type="button" title="Remover" onClick={() => setF({ ...f, feriados: linhasFer.filter(x => x !== l).join('\n') })} className="rounded-full p-0.5 text-rose-700 hover:bg-rose-200/60"><Icone nome="fechar" className="h-3.5 w-3.5" /></button></span>)}
           </div>
           <p className="mt-3 text-xs text-slate-500"><b>Calculados sozinhos todo ano</b> (bancos fechados): {[anoAtual, anoAtual + 1].flatMap(a => feriadosMoveis(a)).map(x => `${x.nome} ${data(x.dia)}`).join(' · ')}. Feriado com <b>município</b> vale só para os clientes com aquele município no cadastro; sem município vale para todos. DD/MM = todo ano; DD/MM/AAAA = só naquele ano.</p>
+        </Secao>
+
+        <Secao icone="alerta" cor="from-red-600 to-red-500" titulo="Restaurar backup" descricao="Volta os dados do Siscon para a data de um backup · use só em caso de perda ou erro grave" className="lg:col-span-2">
+          <RestaurarBackup />
         </Secao>
 
         {/* Barra fixa de salvar */}
