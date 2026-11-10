@@ -137,7 +137,7 @@ export default function Painel() {
                   </li>))}
               </ul>}
           </Cartao>
-          <BoletosAsaas lista={boletos.dados} erro={!!boletos.erro} mes={r.pRec} v={v} />
+          <BoletosAsaas lista={boletos.dados} erro={!!boletos.erro} mes={r.pRec} v={v} recarregar={boletos.recarregar} />
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -166,11 +166,22 @@ type Cobranca = { payment_id: string; customer_id: string; valor: number; vencim
 const PAGO = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']
 
 /** Boletos do Asaas com vencimento no mês dos recebimentos da competência (alimentado pelos avisos do webhook) */
-function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: string; municipio: string | null })[] | null; erro: boolean; mes: string; v: (n: number) => string }) {
+function BoletosAsaas({ lista, erro, mes, v, recarregar }: { lista?: (Cobranca & { nome: string; municipio: string | null })[] | null; erro: boolean; mes: string; v: (n: number) => string; recarregar: () => void }) {
   const avisar = useAviso()
+  // cancelados nesta sessão: somem da lista na hora (o aviso do Asaas atualiza o banco alguns segundos depois)
+  const [cancelados, setCancelados] = useState<Set<string>>(new Set())
+  const [cancelando, setCancelando] = useState<string | null>(null)
+  async function cancelar(x: Cobranca & { nome: string }) {
+    if (!confirm(`Cancelar no Asaas o boleto de ${x.nome}?\n\nValor ${moeda(Number(x.valor))} · vencimento ${data(x.vencimento)}\n\nO boleto deixa de valer para pagamento. O honorário no Siscon NÃO é alterado.`)) return
+    setCancelando(x.payment_id)
+    try {
+      await chamarAsaas('cancelar_boleto', { id: x.payment_id, fatura: x.fatura, vencimento: x.vencimento })
+      setCancelados(c => new Set(c).add(x.payment_id)); avisar(`Boleto de ${x.nome} cancelado no Asaas.`); setTimeout(recarregar, 4000)
+    } catch (e) { avisar((e as Error).message, 'erro') } finally { setCancelando(null) }
+  }
   const hojeIso = new Date().toLocaleDateString('sv-SE')
   const [aba, setAba] = useState<'vencidos' | 'vencer' | 'pagos'>('vencer')
-  const doMes = (lista || []).filter(x => x.vencimento?.startsWith(mes))
+  const doMes = (lista || []).filter(x => x.vencimento?.startsWith(mes) && !cancelados.has(x.payment_id))
   const grupos = {
     pagos: doMes.filter(x => PAGO.includes(x.status)).sort((a, b) => (b.data_pagamento || '').localeCompare(a.data_pagamento || '')),
     // sábado/domingo = vence na segunda: o OVERDUE que o Asaas marca no fim de semana ainda conta como "a vencer"
@@ -207,6 +218,9 @@ function BoletosAsaas({ lista, erro, mes, v }: { lista?: (Cobranca & { nome: str
                 <span className={`num shrink-0 font-semibold ${blocos.find(b => b[0] === aba)![2]}`}>{moeda(Number(x.valor))}</span>
                 <button title="Abrir o boleto do Asaas (PDF)" className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-marca-700 ring-1 ring-slate-200 hover:bg-slate-50"
                   onClick={() => abrirBoleto({ id: x.payment_id, fatura: x.fatura, vencimento: x.vencimento }).catch(e => avisar((e as Error).message, 'erro'))}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Boleto</span></button>
+                {aba !== 'pagos' && <button title="Cancelar este boleto no Asaas" disabled={cancelando === x.payment_id}
+                  className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-red-600 ring-1 ring-red-200 hover:bg-red-50 disabled:opacity-50"
+                  onClick={() => cancelar(x)}>{cancelando === x.payment_id ? 'Cancelando…' : 'Cancelar'}</button>}
               </li>))}
           </ul>}
       </>}

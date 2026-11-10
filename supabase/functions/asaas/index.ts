@@ -135,6 +135,23 @@ Deno.serve(async (req) => {
     }
 
     // Lote do mês por GRUPO de clientes do Asaas (ex.: Impressos, Acessórias): boletos pendentes com vencimento no mês
+    // Cancela (exclui) um boleto EM ABERTO no Asaas. Boleto pago não pode ser cancelado (só estornado, pelo painel do Asaas).
+    if (acao === 'cancelar_boleto') {
+      const { id, fatura, vencimento } = corpoReq as { id?: string; fatura?: string; vencimento?: string }
+      let p: Obj | undefined
+      if (id && !id.startsWith('fatura:')) p = await asaasGet(`/payments/${encodeURIComponent(id)}`)
+      else if (fatura && vencimento) {
+        const lista = await asaasTodos(`/payments?dueDate%5Bge%5D=${vencimento}&dueDate%5Ble%5D=${vencimento}`) as Obj[]
+        p = lista.find(x => String(x.invoiceNumber) === String(fatura))
+      }
+      if (!p) return resposta({ erro: 'Boleto não encontrado no Asaas' }, 404)
+      if (p.deleted) return resposta({ ok: true, id: p.id, jaCancelado: true })
+      if (!['PENDING', 'OVERDUE'].includes(p.status)) return resposta({ erro: `Este boleto está com a situação "${p.status}" no Asaas e não pode ser cancelado (só boleto em aberto).` }, 400)
+      const r = await asaasGet(`/payments/${encodeURIComponent(p.id)}`, 'DELETE')
+      if (!r.deleted) return resposta({ erro: 'O Asaas não confirmou o cancelamento do boleto.' }, 502)
+      return resposta({ ok: true, id: p.id, valor: p.value, vencimento: p.dueDate })
+    }
+
     if (acao === 'lote') {
       const { grupo, mes } = corpoReq as { grupo: string; mes: string }   // mes = 'AAAA-MM'
       if (!grupo || !/^\d{4}-\d{2}$/.test(mes || '')) return resposta({ erro: 'Informe o grupo e o mês' }, 400)
