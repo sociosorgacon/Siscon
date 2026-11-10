@@ -22,54 +22,59 @@ export function lerOfx(texto: string): Credito[] {
   return out
 }
 
-/** Texto do PDF, linha a linha (junta os pedaços com a mesma altura na página) */
-async function linhasPdf(bytes: ArrayBuffer) {
+type Item = { x: number; y: number; s: string }
+
+/** Itens de texto de cada página do PDF, com a posição (x da esquerda, y de baixo para cima) */
+async function itensPdf(bytes: ArrayBuffer) {
   const pdfjs = await import('pdfjs-dist')
-  pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
+  if (typeof window !== 'undefined') pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
   const doc = await pdfjs.getDocument({ data: bytes }).promise
-  const linhas: string[] = []
+  const paginas: Item[][] = []
   for (let p = 1; p <= doc.numPages; p++) {
     const conteudo = await (await doc.getPage(p)).getTextContent()
-    const porY = new Map<number, { x: number; s: string }[]>()
-    for (const it of conteudo.items as { str: string; transform: number[] }[]) {
-      if (!it.str?.trim()) continue
-      const y = Math.round(it.transform[5] / 2) * 2
-      porY.set(y, [...(porY.get(y) || []), { x: it.transform[4], s: it.str }])
-    }
-    ;[...porY.entries()].sort((a, b) => b[0] - a[0])
-      .forEach(([, l]) => linhas.push(l.sort((a, b) => a.x - b.x).map(x => x.s).join(' ').replace(/\s+/g, ' ').trim()))
+    paginas.push((conteudo.items as { str: string; transform: number[] }[]).filter(it => it.str?.trim())
+      .map(it => ({ x: it.transform[4], y: it.transform[5], s: it.str.trim() })))
   }
-  return linhas
+  return paginas
 }
 
 /**
- * PDF do Sicoob: linha com data (DD/MM ou DD/MM/AAAA) e valor terminado em "C" (crédito; "D" = débito).
- * O nome de quem pagou costuma vir na própria linha ou nas 1–2 linhas seguintes (sem data): entram no histórico.
+ * PDF do extrato do Sicoob (SISBR): colunas DATA | HISTÓRICO | VALOR. Cada lançamento começa numa data (DD/MM) e vai
+ * até a próxima; o histórico ocupa várias linhas (ex.: "PIX RECEB.OUTRA IF / Recebimento Pix / NOME / CPF / DOC.: Pix")
+ * e o valor termina em C (crédito) ou D (débito) — valores grandes quebram a linha ("3.350,00" / "C").
  */
 export async function lerPdf(bytes: ArrayBuffer): Promise<Credito[]> {
-  const linhas = await linhasPdf(bytes)
-  const ano = (linhas.join(' ').match(/\b\d{2}\/\d{2}\/(20\d{2})\b/) || [])[1] || String(new Date().getFullYear())
+  const paginas = await itensPdf(bytes)
+  const tudo = paginas.flat().map(i => i.s).join(' ')
+  const periodo = tudo.match(/(\d{2})\/(\d{2})\/(20\d{2})\s*-\s*(\d{2})\/(\d{2})\/(20\d{2})/)
+  const anoDe = (mes: string) => periodo ? (periodo[3] !== periodo[6] && Number(mes) < Number(periodo[2]) ? periodo[6] : periodo[3])
+    : (tudo.match(/\b\d{2}\/\d{2}\/(20\d{2})\b/) || [])[1] || String(new Date().getFullYear())
   const out: Credito[] = []
-  let ultimaData = ''
-  linhas.forEach((l, i) => {
-    const d = l.match(/^(\d{2})\/(\d{2})(?:\/(\d{4}))?\b/)
-    if (d) ultimaData = `${d[3] || ano}-${d[2]}-${d[1]}`
-    // valor com C/D colado ou separado (ex.: "160,00C", "160,00 C", "+160,00")
-    const v = [...l.matchAll(/([+-]?)\s?(\d{1,3}(?:\.\d{3})*,\d{2})\s?([CD])?(?![\d,])/g)]
-    if (!v.length || !ultimaData) return
-    const [, sinal, num, cd] = v[0]
-    const credito = cd === 'C' || (!cd && sinal === '+')
-    if (!credito) return
-    // histórico: o texto da linha sem data/valores + as linhas seguintes que não começam com data nem têm valor
-    const resto = [l]
-    for (let k = i + 1; k <= i + 2 && k < linhas.length; k++) {
-      if (/^\d{2}\/\d{2}/.test(linhas[k]) || /\d,\d{2}\s?[CD]?\b/.test(linhas[k])) break
-      resto.push(linhas[k])
-    }
-    const historico = resto.join(' ').replace(/^\d{2}\/\d{2}(\/\d{4})?/, '').replace(/[+-]?\s?\d{1,3}(?:\.\d{3})*,\d{2}\s?[CD]?/g, '').replace(/\s+/g, ' ').trim()
-    const valor = valorBr(num)
-    out.push({ ref: `pdf:${ultimaData}:${valor.toFixed(2)}:${historico.slice(0, 60)}`, data: ultimaData, valor, historico })
-  })
+  let xValor = 0, xHist = 0
+  for (const itens of paginas) {
+    const cabV = itens.find(i => /^VALOR$/i.test(i.s)), cabH = itens.find(i => /^HIST[ÓO]RICO$/i.test(i.s))
+    if (cabV) xValor = cabV.x
+    if (cabH) xHist = cabH.x
+    if (!xValor || !xHist) continue
+    const limiteValor = xValor - 60   // o que fica à direita disso é a coluna VALOR
+    const datas = itens.filter(i => i.x < xHist - 5 && /^\d{2}\/\d{2}$/.test(i.s)).sort((a, b) => b.y - a.y)
+    datas.forEach((d, k) => {
+      const prox = datas[k + 1]
+      // faixa do lançamento: da linha da data (com folga para o valor alinhado um pouco acima) até a próxima data
+      const dentro = (i: Item) => i.y <= d.y + 9 && (!prox || i.y > prox.y + 9)
+      const val = itens.filter(i => i.x >= limiteValor && dentro(i)).sort((a, b) => b.y - a.y).map(i => i.s).join('')
+      const m = val.match(/^(\d{1,3}(?:\.\d{3})*,\d{2})\*?([CD])/)
+      if (!m || m[2] !== 'C') return
+      const hist = itens.filter(i => i.x >= xHist - 5 && i.x < limiteValor && dentro(i)).sort((a, b) => b.y - a.y || a.x - b.x).map(i => i.s)
+      if (/^SALDO/i.test(hist[0] || '')) return
+      const [dd, mm] = d.s.split('/')
+      const data = `${anoDe(mm)}-${mm}-${dd}`
+      const historico = hist.filter(h => !/^DOC\.?:/i.test(h)).join(' · ')
+      const doc = (hist.find(h => /^DOC\.?:/i.test(h)) || '').replace(/^DOC\.?:\s*/i, '')
+      const valor = valorBr(m[1])
+      out.push({ ref: `pdf:${data}:${valor.toFixed(2)}:${doc && doc !== 'Pix' ? doc : historico.slice(0, 80)}`, data, valor, historico })
+    })
+  }
   // mesmo dia, valor e histórico repetidos: numera para não confundir as referências
   const vistos = new Map<string, number>()
   return out.map(c => { const n = (vistos.get(c.ref) || 0) + 1; vistos.set(c.ref, n); return n > 1 ? { ...c, ref: `${c.ref}#${n}` } : c })
