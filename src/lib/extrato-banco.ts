@@ -1,8 +1,8 @@
 /**
- * Leitura do extrato bancário (Sicoob) em OFX ou PDF: devolve os CRÉDITOS com data, valor e histórico.
- * Usado para achar os pagamentos de certificado digital (valores 115,00 e 160,00).
+ * Leitura do extrato bancário (Sicoob) em OFX ou PDF: devolve os lançamentos (crédito C / débito D) com data, valor e histórico.
+ * Usado para achar os certificados digitais: pagamentos à SIC Certificação Digital (débitos) e recebimentos dos clientes (créditos).
  */
-export type Credito = { ref: string; data: string; valor: number; historico: string }
+export type Credito = { ref: string; data: string; valor: number; historico: string; cd: 'C' | 'D' }
 
 const valorBr = (s: string) => Number(s.replace(/\./g, '').replace(',', '.'))
 
@@ -14,10 +14,10 @@ export function lerOfx(texto: string): Credito[] {
     const b = m[1]
     const valor = Number(tag(b, 'TRNAMT').replace(',', '.'))
     const dt = tag(b, 'DTPOSTED')
-    if (!(valor > 0) || !/^\d{8}/.test(dt)) continue
+    if (!valor || !/^\d{8}/.test(dt)) continue
     const data = `${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}`
     const historico = [tag(b, 'NAME'), tag(b, 'MEMO')].filter(Boolean).join(' · ')
-    out.push({ ref: `ofx:${tag(b, 'FITID') || `${data}:${valor}:${historico}`}`, data, valor: Math.round(valor * 100) / 100, historico })
+    out.push({ ref: `ofx:${tag(b, 'FITID') || `${data}:${valor}:${historico}`}`, data, valor: Math.round(Math.abs(valor) * 100) / 100, historico, cd: valor > 0 ? 'C' : 'D' })
   }
   return out
 }
@@ -64,7 +64,7 @@ export async function lerPdf(bytes: ArrayBuffer): Promise<Credito[]> {
       const dentro = (i: Item) => i.y <= d.y + 9 && (!prox || i.y > prox.y + 9)
       const val = itens.filter(i => i.x >= limiteValor && dentro(i)).sort((a, b) => b.y - a.y).map(i => i.s).join('')
       const m = val.match(/^(\d{1,3}(?:\.\d{3})*,\d{2})\*?([CD])/)
-      if (!m || m[2] !== 'C') return
+      if (!m) return
       const hist = itens.filter(i => i.x >= xHist - 5 && i.x < limiteValor && dentro(i)).sort((a, b) => b.y - a.y || a.x - b.x).map(i => i.s)
       if (/^SALDO/i.test(hist[0] || '')) return
       const [dd, mm] = d.s.split('/')
@@ -72,7 +72,7 @@ export async function lerPdf(bytes: ArrayBuffer): Promise<Credito[]> {
       const historico = hist.filter(h => !/^DOC\.?:/i.test(h)).join(' · ')
       const doc = (hist.find(h => /^DOC\.?:/i.test(h)) || '').replace(/^DOC\.?:\s*/i, '')
       const valor = valorBr(m[1])
-      out.push({ ref: `pdf:${data}:${valor.toFixed(2)}:${doc && doc !== 'Pix' ? doc : historico.slice(0, 80)}`, data, valor, historico })
+      out.push({ ref: `pdf:${m[2]}:${data}:${valor.toFixed(2)}:${doc && doc !== 'Pix' ? doc : historico.slice(0, 80)}`, data, valor, historico, cd: m[2] as 'C' | 'D' })
     })
   }
   // mesmo dia, valor e histórico repetidos: numera para não confundir as referências
@@ -94,7 +94,27 @@ export async function lerExtrato(arquivo: File): Promise<Credito[]> {
 export function semelhanca(nome: string, historico: string) {
   const n = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
   const ignora = new Set(['LTDA', 'EIRELI', 'ME', 'EPP', 'SA', 'DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'CIA', 'COMERCIO', 'SERVICOS'])
-  const palavras = n(nome).split(/[^A-Z0-9]+/).filter(p => p.length >= 3 && !ignora.has(p))
+  const palavras = n(nome).split(/[^A-Z0-9]+/).filter(p => p.length >= 2 && !ignora.has(p))
   const h = ' ' + n(historico).replace(/[^A-Z0-9]+/g, ' ') + ' '
   return palavras.filter(p => h.includes(` ${p} `)).length
 }
+
+/** Pagamento à SIC Certificação Digital (custo do certificado). O nome do cliente vem em "Certificado <nome>" */
+export type PagamentoSic = Credito & { nome: string }
+export function pagamentosSic(lancs: Credito[]): PagamentoSic[] {
+  return lancs.filter(l => l.cd === 'D' && /SIC\s+CERTIFICA/i.test(l.historico)).map(l => {
+    const m = l.historico.split(' · ').map(x => x.trim()).find(x => /^Certificado\s+/i.test(x) && !/CERTIFICACAO/i.test(x))
+    return { ...l, nome: m ? m.replace(/^Certificado\s+/i, '').trim() : '' }
+  })
+}
+
+/** Nome de quem pagou, tirado do histórico do crédito ("REM.: NOME" ou a linha depois de "Recebimento Pix") */
+export function pagadorDoCredito(historico: string) {
+  const partes = historico.split(' · ').map(x => x.trim())
+  const rem = partes.find(x => /^REM\.?:/i.test(x))
+  if (rem) return rem.replace(/^REM\.?:\s*/i, '')
+  const i = partes.findIndex(x => /^(Recebimento|Transfer[êe]ncia) Pix$/i.test(x))
+  return (i >= 0 && partes[i + 1]) || partes[0] || ''
+}
+
+export const diasEntre = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000)

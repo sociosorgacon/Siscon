@@ -4,8 +4,9 @@ import { moeda, doc } from './format'
 
 /** Tipos de certificado digital cobrados à parte (cobrança avulsa: não é lançada no Siscon nem entra nos relatórios) */
 export const CERTIFICADOS = [
-  { id: 'A1 PJ', nome: 'Certificado Digital A1 PJ', valor: 160, liquido: 95 },   // líquido = o que fica para o escritório
-  { id: 'A1 PF', nome: 'Certificado Digital A1 PF', valor: 115, liquido: 60 },
+  // líquido = o que fica para o escritório; custo = o que se paga à SIC Certificação Digital (aparece no extrato)
+  { id: 'A1 PJ', nome: 'Certificado Digital A1 PJ', valor: 160, liquido: 95, custo: 65 },
+  { id: 'A1 PF', nome: 'Certificado Digital A1 PF', valor: 115, liquido: 60, custo: 55 },
 ] as const
 /** Valor líquido de um certificado já registrado (o gravado; senão, pelo tipo) */
 export const liquidoCert = (x: { tipo: string; valor: number; valor_liquido?: number | null }) =>

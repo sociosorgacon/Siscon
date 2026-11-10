@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, ok, todos, type Cliente, type Despesa } from '../lib/supabase'
 import { useApp, useDados, descricoesPadrao, escritorioDe, pixDe } from '../lib/app'
 import { CERTIFICADOS, gerarCobrancaCertificadoPdf, pixCertificado, liquidoCert } from '../lib/certificado-pdf'
-import { lerExtrato, semelhanca, type Credito } from '../lib/extrato-banco'
+import { lerExtrato, semelhanca, pagamentosSic, pagadorDoCredito, diasEntre, type Credito, type PagamentoSic } from '../lib/extrato-banco'
 import { moeda, data, comp, compParaIso, hojeIso, normaliza } from '../lib/format'
 import { Abas, Avatar, FiltroClientes, clientesDe, Botao, Busca, Cabecalho, Campo, Cartao, Carregando, Modal, Pilulas, Resumo, Selo, Vazio, useAviso } from '../components/ui'
 import { Icone } from '../components/icones'
@@ -244,7 +244,7 @@ function Fixas({ clientes }: { clientes: ClienteMin[] }) {
   )
 }
 
-type CertCobrado = { id: string; data: string; cliente_id: string | null; cliente_nome: string; cnpj: string | null; tipo: string; valor: number; valor_liquido: number | null; pago: boolean; data_pagamento: string | null; extrato_ref: string | null }
+type CertCobrado = { id: string; data: string; cliente_id: string | null; cliente_nome: string; cnpj: string | null; tipo: string; valor: number; valor_liquido: number | null; pago: boolean; data_pagamento: string | null; extrato_ref: string | null; sic_ref?: string | null; custo?: number | null }
 
 /**
  * Cobrança avulsa de Certificado Digital (A1 PJ / A1 PF): gera o PDF com QR Code Pix no valor do tipo escolhido
@@ -395,16 +395,20 @@ function Certificados({ clientes }: { clientes: ClienteMin[] }) {
   )
 }
 
-type LinhaExtrato = Credito & { tipo: string; alvo: string; sugestao: string; jaUsado: boolean }
+type LinhaExtrato = { chave: string; sic?: PagamentoSic; credito?: Credito; tipo: string; nome: string; acao: string; nota: string; ja: boolean }
+const tipoPorCusto = (custo: number) => CERTIFICADOS.find(c => Math.abs(c.custo - custo) < 0.005)?.id || ''
+const tipoPorValor = (valor: number) => CERTIFICADOS.find(c => Math.abs(c.valor - valor) < 0.005)?.id || ''
 
 /**
- * Importa o extrato do Sicoob (OFX ou PDF), acha os créditos de 115,00 (A1 PF) e 160,00 (A1 PJ) e propõe a baixa
- * das cobranças de certificado em aberto (pelo nome no histórico do extrato). Nada é gravado sem confirmar.
+ * Importa o extrato do Sicoob (OFX ou PDF) e monta os certificados do período:
+ * 1) cada pagamento à SIC Certificação Digital = um certificado emitido ("Certificado <nome>"; custo 65 = PJ, 55 = PF);
+ *    procura o recebimento do cliente (crédito com o nome, de 20 dias antes a 45 dias depois; sem nome, crédito de 115/160 em até 7 dias);
+ * 2) créditos de 115,00/160,00 que sobraram (sem pagamento à SIC no extrato).
+ * Propõe: baixar a cobrança em aberto, registrar como pago, ou criar a cobrança em aberto. Nada é gravado sem confirmar.
  */
 function ImportarExtratoCertificados({ certs, fechar, salvo }: { certs: CertCobrado[]; fechar: () => void; salvo: () => void }) {
   const avisar = useAviso()
   const [linhas, setLinhas] = useState<LinhaExtrato[] | null>(null)
-  const [outros, setOutros] = useState(0)
   const [lendo, setLendo] = useState(false)
   const [gravando, setGravando] = useState(false)
   const abertos = certs.filter(x => !x.pago)
@@ -413,89 +417,117 @@ function ImportarExtratoCertificados({ certs, fechar, salvo }: { certs: CertCobr
     if (!arquivo) return
     setLendo(true)
     try {
-      const creditos = await lerExtrato(arquivo)
-      const usados = new Set(certs.map(x => x.extrato_ref).filter(Boolean))
-      const doCert = creditos.filter(c => CERTIFICADOS.some(t => Math.abs(t.valor - c.valor) < 0.005))
-      setOutros(creditos.length - doCert.length)
-      const reservados = new Set<string>()
-      // primeiro os créditos com nome reconhecido, para não "roubarem" a cobrança de quem tem nome parecido
-      const propostas = doCert.map(c => {
-        const tipo = CERTIFICADOS.find(t => Math.abs(t.valor - c.valor) < 0.005)!.id
-        const cands = abertos.filter(x => x.tipo === tipo && Math.abs(Number(x.valor) - c.valor) < 0.005)
-          .map(x => ({ x, p: semelhanca(x.cliente_nome, c.historico) })).sort((a, b) => b.p - a.p)
-        return { c, tipo, cands }
-      }).sort((a, b) => (b.cands[0]?.p || 0) - (a.cands[0]?.p || 0))
-      const res: LinhaExtrato[] = propostas.map(({ c, tipo, cands }) => {
-        const jaUsado = usados.has(c.ref)
-        const livre = cands.filter(k => !reservados.has(k.x.id))
-        let alvo = '', sugestao = ''
-        if (!jaUsado && livre[0]?.p > 0) { alvo = livre[0].x.id; reservados.add(alvo); sugestao = 'nome confere' }
-        else if (!jaUsado && livre.length === 1) { sugestao = `possível: ${livre[0].x.cliente_nome} (nome não confere — confira)` }
-        return { ...c, tipo, alvo, sugestao, jaUsado }
-      }).sort((a, b) => a.data.localeCompare(b.data))
-      setLinhas(res)
-      if (!creditos.length) avisar('Nenhum crédito encontrado no arquivo.', 'erro')
+      const lancs = await lerExtrato(arquivo)
+      const creditos = lancs.filter(l => l.cd === 'C'), sics = pagamentosSic(lancs).sort((a, b) => a.data.localeCompare(b.data))
+      const usadosExt = new Set(certs.map(x => x.extrato_ref).filter(Boolean)), usadosSic = new Set(certs.map(x => x.sic_ref).filter(Boolean))
+      const credUsado = new Set<string>(), certUsado = new Set<string>()
+      const cobranca = (nome: string, tipo: string) => abertos.filter(x => !certUsado.has(x.id) && (!tipo || x.tipo === tipo))
+        .map(x => ({ x, p: semelhanca(x.cliente_nome, nome) })).filter(k => k.p > 0).sort((a, b) => b.p - a.p)[0]?.x
+      const res: LinhaExtrato[] = []
+
+      for (const s of sics) {
+        let tipo = tipoPorCusto(s.valor)
+        // recebimento do cliente: pelo nome do "Certificado <nome>"; sem nome, pelo valor do tipo em até 7 dias
+        const cand = creditos.filter(c => !credUsado.has(c.ref) && diasEntre(s.data, c.data) >= -20 && diasEntre(s.data, c.data) <= 45)
+        const credito = (s.nome ? cand.map(c => ({ c, p: semelhanca(s.nome, c.historico) })).filter(k => k.p > 0)
+            .sort((a, b) => b.p - a.p || (tipoPorValor(b.c.valor) ? 1 : 0) - (tipoPorValor(a.c.valor) ? 1 : 0) || Math.abs(diasEntre(s.data, a.c.data)) - Math.abs(diasEntre(s.data, b.c.data)))[0]?.c
+          : cand.filter(c => tipo && tipoPorValor(c.valor) === tipo && Math.abs(diasEntre(s.data, c.data)) <= 7)
+            .sort((a, b) => Math.abs(diasEntre(s.data, a.data)) - Math.abs(diasEntre(s.data, b.data)))[0])
+        if (credito) credUsado.add(credito.ref)
+        tipo = tipo || (credito ? tipoPorValor(credito.valor) : '') || 'Outro'
+        const nome = credito ? pagadorDoCredito(credito.historico) : s.nome
+        const ja = usadosSic.has(s.ref) || (!!credito && usadosExt.has(credito.ref))
+        const cob = ja ? undefined : cobranca(`${s.nome} ${nome}`, tipo)
+        if (cob) certUsado.add(cob.id)
+        // valor recebido fora do padrão (ex.: 260,00 = certificado + outro serviço?) não vem marcado
+        const foraPadrao = !!credito && !tipoPorValor(credito.valor)
+        const acao = ja || foraPadrao ? (cob && !ja ? cob.id : '') : credito ? (cob ? cob.id : 'novo_pago') : cob ? '' : 'novo_aberto'
+        const nota = foraPadrao ? `Recebido ${moeda(credito!.valor)} em ${data(credito!.data)}: valor fora do padrão — confira antes de registrar` : !credito ? (cob ? `Cobrança em aberto já existe (${cob.cliente_nome}) — aguardando pagamento` : 'Recebimento não encontrado no extrato (dinheiro? outro mês?)')
+          : !s.nome ? 'Pagamento à SIC sem nome: recebimento achado pelo valor e data — confira' : `Recebido em ${data(credito.data)}`
+        res.push({ chave: s.ref, sic: s, credito, tipo, nome: nome || 'Sem nome no extrato', acao, nota, ja })
+      }
+      // créditos de 115/160 sem pagamento à SIC no extrato (ex.: SIC paga em outro mês)
+      for (const c of creditos.filter(c => !credUsado.has(c.ref) && tipoPorValor(c.valor))) {
+        const tipo = tipoPorValor(c.valor), nome = pagadorDoCredito(c.historico), ja = usadosExt.has(c.ref)
+        const cob = ja ? undefined : cobranca(nome, tipo)
+        if (cob) certUsado.add(cob.id)
+        res.push({ chave: c.ref, credito: c, tipo, nome, acao: cob ? cob.id : '', ja,
+          nota: cob ? 'Nome confere com a cobrança' : 'Sem pagamento à SIC neste extrato: pode não ser certificado — confira' })
+      }
+      setLinhas(res.sort((a, b) => (a.sic?.data || a.credito!.data).localeCompare(b.sic?.data || b.credito!.data)))
+      if (!res.length) avisar('Nenhum certificado encontrado no extrato (pagamentos à SIC ou créditos de 115,00/160,00).', 'erro')
     } catch (e) { avisar((e as Error).message, 'erro') } finally { setLendo(false) }
   }
 
-  const mudar = (ref: string, alvo: string) => setLinhas(l => l && l.map(x => x.ref === ref ? { ...x, alvo } : x))
-  const escolhidas = (linhas || []).filter(x => x.alvo && !x.jaUsado)
-  const liquido = escolhidas.reduce((t, x) => t + (CERTIFICADOS.find(c => c.id === x.tipo)?.liquido || 0), 0)
+  const mudar = (chave: string, acao: string) => setLinhas(l => l && l.map(x => x.chave === chave ? { ...x, acao } : x))
+  const valorDe = (x: LinhaExtrato) => x.credito?.valor ?? CERTIFICADOS.find(c => c.id === x.tipo)?.valor ?? 0
+  const custoDe = (x: LinhaExtrato) => x.sic?.valor ?? CERTIFICADOS.find(c => c.id === x.tipo)?.custo ?? 0
+  const liquidoDe = (x: LinhaExtrato) => Math.round((valorDe(x) - custoDe(x)) * 100) / 100
+  const escolhidas = (linhas || []).filter(x => x.acao && !x.ja)
+  const liquido = escolhidas.filter(x => x.acao !== 'novo_aberto').reduce((t, x) => t + liquidoDe(x), 0)
 
   async function confirmar() {
-    if (!escolhidas.length) return avisar('Nenhum crédito escolhido para baixa.', 'erro')
-    const repetido = escolhidas.map(x => x.alvo).filter(a => a !== 'novo').find((a, i, arr) => arr.indexOf(a) !== i)
-    if (repetido) return avisar('A mesma cobrança foi escolhida para dois créditos. Corrija antes de confirmar.', 'erro')
+    if (!escolhidas.length) return avisar('Nada escolhido.', 'erro')
+    const ids = escolhidas.map(x => x.acao).filter(a => !a.startsWith('novo'))
+    if (ids.some((a, i) => ids.indexOf(a) !== i)) return avisar('A mesma cobrança foi escolhida para duas linhas. Corrija antes de confirmar.', 'erro')
     setGravando(true)
     try {
       for (const x of escolhidas) {
-        const t = CERTIFICADOS.find(c => c.id === x.tipo)!
-        if (x.alvo === 'novo') ok(await supabase.from('certificados_cobrados').insert({ data: x.data, cliente_nome: (x.historico || 'Recebido pelo extrato').slice(0, 120),
-          tipo: t.id, valor: t.valor, valor_liquido: t.liquido, pago: true, data_pagamento: x.data, extrato_ref: x.ref, observacoes: 'Registrado pelo extrato Sicoob (sem cobrança gerada)' }))
-        else ok(await supabase.from('certificados_cobrados').update({ pago: true, data_pagamento: x.data, extrato_ref: x.ref }).eq('id', x.alvo).eq('pago', false))
+        const base = { sic_ref: x.sic?.ref || null, custo: x.sic ? x.sic.valor : null, valor_liquido: liquidoDe(x) }
+        if (x.acao === 'novo_pago' || x.acao === 'novo_aberto') {
+          const pago = x.acao === 'novo_pago'
+          ok(await supabase.from('certificados_cobrados').insert({ ...base, data: x.sic?.data || x.credito!.data, cliente_nome: x.nome.slice(0, 120), tipo: x.tipo, valor: valorDe(x),
+            pago, data_pagamento: pago ? x.credito!.data : null, extrato_ref: pago ? x.credito!.ref : null,
+            observacoes: pago ? 'Registrado pelo extrato Sicoob' : 'Criado pelo extrato Sicoob (certificado pago à SIC, recebimento não encontrado)' }))
+        } else {
+          const cob = certs.find(c => c.id === x.acao)!
+          ok(await supabase.from('certificados_cobrados').update({ ...base, valor_liquido: Math.round((Number(cob.valor) - custoDe(x)) * 100) / 100,
+            pago: true, data_pagamento: x.credito!.data, extrato_ref: x.credito!.ref }).eq('id', x.acao).eq('pago', false))
+        }
       }
-      avisar(`${escolhidas.length} certificado(s) baixado(s) · líquido ${moeda(liquido)}.`); salvo()
+      avisar(`${escolhidas.length} certificado(s) gravado(s) · líquido recebido ${moeda(liquido)}.`); salvo()
     } catch (e) { avisar((e as Error).message, 'erro') } finally { setGravando(false) }
   }
 
   return (
-    <Modal titulo="Baixa de certificados pelo extrato do Sicoob" aberto fechar={fechar} largura="max-w-4xl">
+    <Modal titulo="Certificados pelo extrato do Sicoob" aberto fechar={fechar} largura="max-w-6xl">
       <div className="grid gap-4">
-        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-slate-300 px-4 py-5 text-center text-sm text-slate-500 hover:border-marca-700 hover:bg-slate-50">
+        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-slate-300 px-4 py-4 text-center text-sm text-slate-500 hover:border-marca-700 hover:bg-slate-50">
           <Icone nome="baixar" className="h-5 w-5 rotate-180 text-marca-700" />
-          <b className="text-slate-700">{lendo ? 'Lendo o extrato…' : 'Escolher o extrato do Sicoob (OFX ou PDF)'}</b>
-          <span>Procura os créditos de {CERTIFICADOS.map(c => `${moeda(c.valor)} (${c.id})`).join(' e ')}</span>
+          <b className="text-slate-700">{lendo ? 'Lendo o extrato…' : 'Escolher o extrato do Sicoob (PDF ou OFX)'}</b>
+          <span>Procura os pagamentos à <b>SIC Certificação Digital</b> e o recebimento de cada cliente; também os créditos de {CERTIFICADOS.map(c => moeda(c.valor)).join(' e ')}</span>
           <input type="file" accept=".ofx,.pdf,application/pdf" className="hidden" onChange={e => { ler(e.target.files?.[0]); e.target.value = '' }} />
         </label>
-        {linhas && (linhas.length === 0 ? <Vazio texto={`Nenhum crédito de certificado no extrato${outros ? ` (${outros} outro(s) crédito(s) ignorado(s))` : ''}.`} /> : <>
-          <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200">
+        {linhas && linhas.length > 0 && <>
+          <div className="max-h-[28rem] overflow-y-auto rounded-lg border border-slate-200">
             <table className="tabela">
-              <thead><tr><th>Data</th><th>Histórico no extrato</th><th className="text-right">Valor</th><th>Baixar a cobrança</th></tr></thead>
+              <thead><tr><th>Pago à SIC</th><th>Cliente</th><th className="text-right">Recebido</th><th className="text-right">Líquido</th><th>O que fazer</th></tr></thead>
               <tbody>{linhas.map(x => {
-                const opcoes = abertos.filter(c => c.tipo === x.tipo && Math.abs(Number(c.valor) - x.valor) < 0.005)
-                return <tr key={x.ref} className={x.jaUsado ? 'opacity-50' : ''}>
-                  <td className="whitespace-nowrap">{data(x.data)}</td>
-                  <td className="max-w-xs"><span className="block truncate" title={x.historico}>{x.historico || '—'}</span>
-                    {x.sugestao && <span className={`block text-[11px] ${x.alvo ? 'text-emerald-600' : 'text-amber-600'}`}>{x.sugestao}</span>}</td>
-                  <td className="num whitespace-nowrap text-right">{moeda(x.valor)} <span className="text-[11px] text-slate-400">{x.tipo}</span></td>
-                  <td>{x.jaUsado ? <span className="text-xs text-slate-500">Já baixado antes</span> :
-                    <select className="campo !h-8 w-64 text-xs" value={x.alvo} onChange={e => mudar(x.ref, e.target.value)}>
-                      <option value="">Não é certificado / ignorar</option>
-                      {opcoes.map(c => <option key={c.id} value={c.id}>{c.cliente_nome} · cobrado em {data(c.data)}</option>)}
-                      <option value="novo">Registrar como certificado pago (sem cobrança)</option>
+                const opcoes = abertos.filter(c => x.tipo === 'Outro' || c.tipo === x.tipo)
+                return <tr key={x.chave} className={x.ja ? 'opacity-50' : ''}>
+                  <td className="whitespace-nowrap">{x.sic ? <>{data(x.sic.data)} <span className="num text-xs text-slate-500">{moeda(x.sic.valor)}</span></> : <span className="text-xs text-amber-600">não achado</span>}</td>
+                  <td className="max-w-xs"><span className="block truncate font-medium" title={x.credito?.historico || x.sic?.historico}>{x.nome}{x.sic?.nome && x.sic.nome.toUpperCase() !== x.nome.toUpperCase() && <span className="font-normal text-slate-400"> · “{x.sic.nome}”</span>}</span>
+                    <span className="block truncate text-[11px] text-slate-500" title={x.nota}>{x.tipo} · {x.nota}</span></td>
+                  <td className="num whitespace-nowrap text-right">{x.credito ? <>{moeda(x.credito.valor)}<span className="block text-[11px] text-slate-400">{data(x.credito.data)}</span></> : '—'}</td>
+                  <td className="num whitespace-nowrap text-right text-slate-600">{x.credito ? moeda(liquidoDe(x)) : '—'}</td>
+                  <td>{x.ja ? <span className="text-xs text-slate-500">Já processado antes</span> :
+                    <select className="campo !h-8 w-72 text-xs" value={x.acao} onChange={e => mudar(x.chave, e.target.value)}>
+                      <option value="">Ignorar</option>
+                      {x.credito && opcoes.map(c => <option key={c.id} value={c.id}>Baixar a cobrança de {c.cliente_nome} ({c.tipo})</option>)}
+                      {x.credito && <option value="novo_pago">Registrar como pago (sem cobrança)</option>}
+                      {x.sic && !x.credito && <option value="novo_aberto">Criar cobrança em aberto</option>}
                     </select>}</td>
                 </tr>
               })}</tbody>
             </table>
           </div>
-          <p className="text-xs text-slate-500">Créditos com o nome da cobrança no histórico já vêm escolhidos. Os demais ficam em "ignorar": escolha a cobrança se for certificado.
-            {outros > 0 && ` ${outros} crédito(s) de outros valores foram ignorados.`}</p>
+          <p className="text-xs text-slate-500">Líquido = recebido − pago à SIC (sem pagamento à SIC no extrato, usa o custo padrão: PJ {moeda(65)}, PF {moeda(55)}). Linhas com aviso “confira” não precisam ser aceitas: escolha “Ignorar”.</p>
           <div className="flex items-center justify-end gap-3">
-            <span className="text-sm text-slate-600">{escolhidas.length} para baixar · líquido <b className="num">{moeda(liquido)}</b></span>
+            <span className="text-sm text-slate-600">{escolhidas.length} para gravar · líquido recebido <b className="num">{moeda(liquido)}</b></span>
             <Botao type="button" variante="secundario" onClick={fechar}>Cancelar</Botao>
-            <Botao type="button" onClick={confirmar} disabled={gravando || !escolhidas.length}>{gravando ? 'Gravando…' : 'Confirmar baixas'}</Botao>
+            <Botao type="button" onClick={confirmar} disabled={gravando || !escolhidas.length}>{gravando ? 'Gravando…' : 'Confirmar'}</Botao>
           </div>
-        </>)}
+        </>}
       </div>
     </Modal>
   )
