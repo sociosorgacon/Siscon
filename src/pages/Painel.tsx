@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, todos, type Honorario, type Recibo, type Despesa } from '../lib/supabase'
 import { useApp, useDados, escritorioDe } from '../lib/app'
 import { chamarAsaas, abrirBoleto } from '../lib/asaas'
-import { moeda, data, ultimasCompetencias, compParaIso, boletoVencido } from '../lib/format'
-import { Avatar, Cartao, LogoAsaas, Carregando, Vazio, useAviso } from '../components/ui'
+import { moeda, data, ultimasCompetencias, compParaIso, boletoVencido, vencimentoUtil, hojeIso } from '../lib/format'
+import { Avatar, Botao, Cartao, LogoAsaas, Carregando, Modal, Vazio, useAviso } from '../components/ui'
 import { Icone, type NomeIcone } from '../components/icones'
 import { imprimirRecibo } from '../lib/recibo-pdf'
 import { liquidoCert } from '../lib/certificado-pdf'
@@ -176,6 +176,7 @@ function BoletosAsaas({ lista, erro, mes, v, recarregar }: { lista?: (Cobranca &
   // cancelados nesta sessão: somem da lista na hora (o aviso do Asaas atualiza o banco alguns segundos depois)
   const [cancelados, setCancelados] = useState<Set<string>>(new Set())
   const [cancelando, setCancelando] = useState<string | null>(null)
+  const [recalc, setRecalc] = useState<(Cobranca & { nome: string }) | null>(null)
   async function cancelar(x: Cobranca & { nome: string }) {
     if (!confirm(`Cancelar no Asaas o boleto de ${x.nome}?\n\nValor ${moeda(Number(x.valor))} · vencimento ${data(x.vencimento)}\n\nO boleto deixa de valer para pagamento. O honorário no Siscon NÃO é alterado.`)) return
     setCancelando(x.payment_id)
@@ -221,14 +222,18 @@ function BoletosAsaas({ lista, erro, mes, v, recarregar }: { lista?: (Cobranca &
                 <span className="min-w-0 flex-1"><span className="block truncate font-medium text-slate-700">{x.nome}</span>
                   <span className="block truncate text-xs text-slate-400">{aba === 'pagos' ? `pago em ${data(x.data_pagamento)}` : `vence ${data(x.vencimento)}`}{x.fatura ? ` · fatura ${x.fatura}` : ''}{x.descricao ? ` · ${x.descricao}` : ''}</span></span>
                 <span className={`num shrink-0 font-semibold ${blocos.find(b => b[0] === aba)![2]}`}>{moeda(Number(x.valor))}</span>
-                <button title="Abrir o boleto do Asaas (PDF)" className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-marca-700 ring-1 ring-slate-200 hover:bg-slate-50"
-                  onClick={() => abrirBoleto({ id: x.payment_id, fatura: x.fatura, vencimento: x.vencimento }).catch(e => avisar((e as Error).message, 'erro'))}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Boleto</span></button>
+                {aba === 'vencidos'
+                  ? <button title="Novo vencimento com multa e juros, e baixar o boleto atualizado" className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-marca-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                      onClick={() => setRecalc(x)}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Recalcular</span></button>
+                  : <button title="Abrir o boleto do Asaas (PDF)" className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-marca-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                      onClick={() => abrirBoleto({ id: x.payment_id, fatura: x.fatura, vencimento: x.vencimento }).catch(e => avisar((e as Error).message, 'erro'))}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Boleto</span></button>}
                 {aba !== 'pagos' && <button title="Cancelar este boleto no Asaas" disabled={cancelando === x.payment_id}
                   className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-red-600 ring-1 ring-red-200 hover:bg-red-50 disabled:opacity-50"
                   onClick={() => cancelar(x)}>{cancelando === x.payment_id ? 'Cancelando…' : 'Cancelar'}</button>}
               </li>))}
           </ul>}
       </>}
+      {recalc && <RecalcularBoleto boleto={recalc} fechar={() => setRecalc(null)} feito={() => { setRecalc(null); setTimeout(recarregar, 3000) }} />}
     </Cartao>
   )
 }
@@ -334,5 +339,70 @@ function Kpi({ icone, cor, rotulo, valor, detalhe, abrir }: { icone: NomeIcone; 
         <span className="font-medium text-blue-600 opacity-0 transition group-hover:opacity-100">Ver detalhes →</span>
       </span>
     </button>
+  )
+}
+
+type Calculo = { base: number; vencimentoOriginal: string; dias: number; multaPct: number | null; jurosPct: number; multa: number; juros: number; valor: number; fonte: 'asaas' | 'siscon'; valorAtual: number }
+const nomeArquivo = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90)
+
+/** Recalcular boleto vencido: escolhe o novo vencimento, confere multa/juros, altera o boleto no Asaas e baixa o PDF atualizado */
+function RecalcularBoleto({ boleto, fechar, feito }: { boleto: Cobranca & { nome: string }; fechar: () => void; feito: () => void }) {
+  const avisar = useAviso()
+  // padrão: amanhã (ou o próximo dia útil)
+  const [venc, setVenc] = useState(() => { const d = new Date(hojeIso() + 'T12:00:00'); d.setDate(d.getDate() + 1); return vencimentoUtil(d.toLocaleDateString('sv-SE')) })
+  const [calc, setCalc] = useState<Calculo | null>(null)
+  const [valor, setValor] = useState('')
+  const [ocupado, setOcupado] = useState('')
+  const ref = { id: boleto.payment_id, fatura: boleto.fatura, vencimento: boleto.vencimento }
+
+  useEffect(() => {
+    if (!venc || venc < hojeIso()) { setCalc(null); return }
+    let vivo = true
+    setOcupado('Calculando…')
+    chamarAsaas<Calculo>('recalcular_boleto', { ...ref, novoVencimento: venc, modo: 'simular' })
+      .then(c => { if (vivo) { setCalc(c); setValor(c.valor.toFixed(2).replace('.', ',')) } })
+      .catch(e => avisar((e as Error).message, 'erro')).finally(() => vivo && setOcupado(''))
+    return () => { vivo = false }
+  }, [venc]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function aplicar() {
+    const v = Number(valor.replace(/\./g, '').replace(',', '.'))
+    if (!(v > 0)) return avisar('Valor inválido.', 'erro')
+    try {
+      setOcupado('Alterando o boleto no Asaas…')
+      const r = await chamarAsaas<{ boleto: string | null; fatura: string | null; vencimento: string }>('recalcular_boleto', { ...ref, novoVencimento: venc, valor: v, modo: 'aplicar' })
+      if (!r.boleto) throw new Error('Boleto alterado, mas o Asaas não devolveu o PDF. Use o botão Boleto em "A vencer".')
+      setOcupado('Baixando o boleto atualizado…')
+      const pdf = await chamarAsaas<{ base64: string }>('pdf', { url: r.boleto })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob([Uint8Array.from(atob(pdf.base64), c => c.charCodeAt(0))], { type: 'application/pdf' }))
+      a.download = `${nomeArquivo(boleto.nome)} - Boleto atualizado ${r.vencimento.split('-').reverse().join('-')}.pdf`
+      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 30000)
+      avisar(`Boleto de ${boleto.nome} recalculado: ${moeda(v)} com vencimento em ${data(r.vencimento)}.`); feito()
+    } catch (e) { avisar((e as Error).message, 'erro'); setOcupado('') }
+  }
+
+  return (
+    <Modal titulo="Recalcular boleto vencido" aberto fechar={fechar}>
+      <div className="grid gap-4 text-sm">
+        <p className="text-slate-600"><b className="text-slate-800">{boleto.nome}</b><br />Boleto de {moeda(Number(boleto.valor))} vencido em {data(boleto.vencimento)}{boleto.fatura ? ` · fatura ${boleto.fatura}` : ''}</p>
+        <label><span className="rotulo">Novo vencimento</span>
+          <input type="date" className="campo w-48" min={hojeIso()} value={venc} onChange={e => setVenc(e.target.value)} /></label>
+        {calc && <div className="grid gap-1 rounded-lg bg-slate-50 p-3">
+          <div className="flex justify-between"><span>Valor original (venc. {data(calc.vencimentoOriginal)})</span><span className="num">{moeda(calc.base)}</span></div>
+          <div className="flex justify-between"><span>Multa{calc.multaPct != null ? ` (${String(calc.multaPct).replace('.', ',')}%)` : ''}</span><span className="num">{moeda(calc.multa)}</span></div>
+          <div className="flex justify-between"><span>Juros ({String(calc.jurosPct).replace('.', ',')}% a.m. × {calc.dias} dia(s))</span><span className="num">{moeda(calc.juros)}</span></div>
+          <div className="mt-1 flex items-center justify-between border-t border-slate-200 pt-2 font-semibold"><span>Novo valor</span>
+            <input className="campo num !h-8 w-32 text-right" inputMode="decimal" value={valor} onChange={e => setValor(e.target.value)} /></div>
+          <p className="text-[11px] text-slate-500">{calc.fonte === 'asaas' ? 'Multa e juros configurados no boleto do Asaas.' : 'O boleto não tem multa/juros no Asaas: usado o juros do Siscon (1,55% a.m.), sem multa.'} Dá para mudar o valor antes de confirmar.</p>
+        </div>}
+        <p className="text-xs text-slate-500">O <b>mesmo boleto</b> é alterado no Asaas (novo vencimento e valor) e o PDF atualizado é baixado. Quando for pago, a baixa automática quita a competência original e lança a diferença como juros.</p>
+        {ocupado && <p className="rounded-lg bg-blue-50 px-3 py-2 text-blue-700">{ocupado}</p>}
+        <div className="flex justify-end gap-2">
+          <Botao type="button" variante="secundario" onClick={fechar} disabled={!!ocupado && ocupado !== 'Calculando…'}>Cancelar</Botao>
+          <Botao type="button" onClick={aplicar} disabled={!calc || !!ocupado}>Recalcular e baixar boleto</Botao>
+        </div>
+      </div>
+    </Modal>
   )
 }

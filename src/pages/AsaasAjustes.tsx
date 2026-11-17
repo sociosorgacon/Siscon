@@ -43,7 +43,7 @@ export default function AsaasAjustes() {
     // guarda a consulta por 10 min enquanto o Siscon estiver aberto (trocar de aba não consulta de novo)
     if (!forcar.atual && cache && cache.desde === desde && Date.now() - cache.t < 10 * 60 * 1000) return cache.dados
     forcar.atual = false
-    const [asaas, cli, hon, des, fixas, sal, docs] = await Promise.all([
+    const [asaas, cli, hon, des, fixas, sal, docs, recalc] = await Promise.all([
       chamarAsaas<{ assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[] }>('ajustes'),
       todos<Cliente>((a, b) => supabase.from('clientes').select('*').range(a, b)),
       // honorários a partir da competência de corte + todos em aberto (para reconhecer atrasado incluído à mão no boleto)
@@ -54,7 +54,10 @@ export default function AsaasAjustes() {
       ok(await supabase.from('salarios_minimos').select('vigencia, valor')) as SalarioMinimo[],
       // CPF/CNPJ do cliente do Asaas já guardado pelos avisos/planilha (para clientes ainda sem vínculo)
       todos<{ customer_id: string; cpf_cnpj: string }>((a, b) => supabase.from('asaas_cobrancas').select('customer_id, cpf_cnpj').not('customer_id', 'is', null).not('cpf_cnpj', 'is', null).range(a, b)),
+      // boletos vencidos recalculados pelo Painel: valor já fechado (original + multa/juros), ficam fora dos ajustes
+      todos<{ payment_id: string }>((a, b) => supabase.from('asaas_cobrancas').select('payment_id').not('recalculo_base', 'is', null).range(a, b)).catch(() => []),
     ])
+    const recalculados = new Set(recalc.map(x => x.payment_id))
     const docDe = new Map(docs.map(d => [d.customer_id, d.cpf_cnpj]))
     // Clientes do Asaas ainda sem vínculo no Siscon: busca o CPF/CNPJ deles UMA vez (consulta completa, mais lenta)
     // e grava o vínculo (asaas_customer_id) quando só um cliente do Siscon tem aquele documento. Depois disso fica rápido.
@@ -74,7 +77,7 @@ export default function AsaasAjustes() {
       }
     }
     const comDoc = <T extends { cliente_asaas: string; cpfCnpj: string }>(x: T) => ({ ...x, cpfCnpj: x.cpfCnpj || docDe.get(x.cliente_asaas) || '' })
-    const r = { assinaturas: asaas.assinaturas.map(comDoc), cobrancas: asaas.cobrancas.map(comDoc), cli, hon, des, fixas, sal }
+    const r = { assinaturas: asaas.assinaturas.map(comDoc), cobrancas: asaas.cobrancas.filter(p => !recalculados.has(p.id)).map(comDoc), cli, hon, des, fixas, sal }
     cache = { t: Date.now(), desde, dados: r }
     return r
   }, [desde])

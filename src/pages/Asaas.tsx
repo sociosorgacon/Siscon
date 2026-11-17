@@ -133,15 +133,17 @@ function Conferencia() {
   const { config } = useApp()
   const avisar = useAviso()
   const { dados, erro, recarregar } = useDados(async () => {
-    const [asaas, saldo, clientes, hon, des, fixas] = await Promise.all([
+    const [asaas, saldo, clientes, hon, des, fixas, recalc] = await Promise.all([
       chamarAsaas<{ assinaturas: AssinaturaAsaas[]; cobrancas: CobrancaAsaas[] }>('conferencia'),
       chamarAsaas<{ saldo: number }>('saldo'),
       todos<Cliente>((a, b) => supabase.from('clientes').select('*').range(a, b)),
       todos<Honorario>((a, b) => supabase.from('v_honorarios').select('*').range(a, b)),
       todos<Despesa>((a, b) => supabase.from('v_despesas').select('*').range(a, b)),
       todos<{ cliente_id: string; valor: number; ativa: boolean }>((a, b) => supabase.from('despesas_fixas').select('cliente_id, valor, ativa').range(a, b)),
+      // boletos vencidos recalculados: competência pelo vencimento ORIGINAL
+      todos<{ payment_id: string; vencimento_original: string }>((a, b) => supabase.from('asaas_cobrancas').select('payment_id, vencimento_original').not('vencimento_original', 'is', null).range(a, b)).catch(() => []),
     ])
-    return { ...asaas, saldo: saldo.saldo, clientes, hon, des, fixas }
+    return { ...asaas, saldo: saldo.saldo, clientes, hon, des, fixas, vencOrig: new Map(recalc.map(x => [x.payment_id, x.vencimento_original])) }
   })
 
   const r = useMemo(() => {
@@ -172,7 +174,7 @@ function Conferencia() {
 
     const cobrancas = dados.cobrancas.map(p => {
       const c = acha(p.cliente_asaas, p.cpfCnpj)
-      const compIso = compDoVenc(p.vencimento)
+      const compIso = compDoVenc(dados.vencOrig.get(p.id) || p.vencimento)   // recalculado: competência do vencimento original
       const siscon = c ? r2(dados.hon.filter(h => ids(c.id).includes(h.cliente_id) && h.competencia === compIso).reduce((s, h) => s + h.saldo, 0)
         + dados.des.filter(d => ids(c.id).includes(d.cliente_id) && d.competencia === compIso).reduce((s, d) => s + d.saldo, 0)) : null
       const dif = siscon == null ? null : r2(p.valor - siscon)

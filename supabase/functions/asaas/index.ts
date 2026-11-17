@@ -66,6 +66,25 @@ async function asaasTodos(caminho: string) {
 
 type Obj = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 
+/** Chave de serviço do próprio Supabase (automática nas Edge Functions): grava o recálculo em asaas_cobrancas */
+function chaveServico(): string {
+  const legado = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (legado) return legado
+  try { const k = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}'); return k.default || Object.values(k)[0] as string || '' }
+  catch { return '' }
+}
+async function banco(caminho: string, metodo = 'GET', corpo?: unknown, extra: Record<string, string> = {}) {
+  const chave = chaveServico()
+  const headers: Record<string, string> = { apikey: chave, 'Content-Type': 'application/json', ...extra }
+  if (!chave.startsWith('sb_secret_')) headers.Authorization = `Bearer ${chave}`
+  const r = await fetch(`${Deno.env.get('SUPABASE_URL')}/rest/v1/${caminho}`, { method: metodo, headers, ...(corpo ? { body: JSON.stringify(corpo) } : {}) })
+  if (!r.ok) throw new Error(`Banco respondeu ${r.status}: ${(await r.text()).slice(0, 200)}`)
+  const t = await r.text()
+  return t ? JSON.parse(t) : null
+}
+const r2 = (n: number) => Math.round(n * 100) / 100
+const diasEntre = (a: string, b: string) => Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 86400000)
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
@@ -149,6 +168,50 @@ Deno.serve(async (req) => {
       const r = await asaasGet(`/payments/${encodeURIComponent(p.id)}`, 'DELETE')
       if (!r.deleted) return resposta({ erro: 'O Asaas não confirmou o cancelamento do boleto.' }, 502)
       return resposta({ ok: true, id: p.id, valor: p.value, vencimento: p.dueDate })
+    }
+
+    // Recalcular boleto VENCIDO: novo vencimento + valor original com multa e juros até a nova data (mesmo boleto no Asaas).
+    // modo 'simular' só calcula; modo 'aplicar' altera no Asaas e grava o valor/vencimento originais (para a baixa automática).
+    if (acao === 'recalcular_boleto') {
+      const { id, fatura, vencimento, novoVencimento, valor, modo } = corpoReq as { id?: string; fatura?: string; vencimento?: string; novoVencimento: string; valor?: number; modo: 'simular' | 'aplicar' }
+      const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(novoVencimento || '') || novoVencimento < hoje) return resposta({ erro: 'Informe um novo vencimento a partir de hoje.' }, 400)
+      let p: Obj | undefined
+      if (id && !id.startsWith('fatura:')) p = await asaasGet(`/payments/${encodeURIComponent(id)}`)
+      else if (fatura && vencimento) {
+        const lista = await asaasTodos(`/payments?dueDate%5Bge%5D=${vencimento}&dueDate%5Ble%5D=${vencimento}`) as Obj[]
+        p = lista.find(x => String(x.invoiceNumber) === String(fatura))
+      }
+      if (!p) return resposta({ erro: 'Boleto não encontrado no Asaas' }, 404)
+      if (p.deleted || !['PENDING', 'OVERDUE'].includes(p.status)) return resposta({ erro: `Este boleto está com a situação "${p.deleted ? 'excluído' : p.status}" e não pode ser recalculado.` }, 400)
+      // valor e vencimento ORIGINAIS: os guardados no 1º recálculo (se houver), senão os atuais do boleto
+      const salvo = (await banco(`asaas_cobrancas?payment_id=eq.${encodeURIComponent(p.id)}&select=recalculo_base,vencimento_original`) as Obj[])[0] || {}
+      const base = Number(salvo.recalculo_base ?? p.value)
+      const vencOrig = String(salvo.vencimento_original || p.originalDueDate || p.dueDate)
+      const dias = Math.max(0, diasEntre(vencOrig, novoVencimento))
+      // multa e juros configurados no boleto do Asaas; sem configuração, juros do Siscon (1,55% a.m.) sem multa
+      const temConf = Number(p.fine?.value || 0) > 0 || Number(p.interest?.value || 0) > 0
+      const multa = dias > 0 ? (p.fine?.type === 'FIXED' ? Number(p.fine.value || 0) : base * Number(p.fine?.value || 0) / 100) : 0
+      const jurosPct = temConf ? Number(p.interest?.value || 0) : 1.55
+      const juros = base * jurosPct / 100 / 30 * dias
+      const calculo = { base: r2(base), vencimentoOriginal: vencOrig, dias, multaPct: p.fine?.type === 'FIXED' ? null : Number(p.fine?.value || 0), jurosPct,
+        multa: r2(multa), juros: r2(juros), valor: r2(base + multa + juros), fonte: temConf ? 'asaas' : 'siscon', valorAtual: Number(p.value), cliente: p.customer }
+      if (modo !== 'aplicar') return resposta(calculo)
+
+      const novoValor = r2(Number(valor ?? calculo.valor))
+      if (!(novoValor > 0)) return resposta({ erro: 'Valor inválido.' }, 400)
+      const nota = `Atualizado em ${hoje.split('-').reverse().join('/')}: valor original R$ ${base.toFixed(2).replace('.', ',')}` +
+        (novoValor > base ? ` + multa/juros R$ ${(novoValor - base).toFixed(2).replace('.', ',')}` : '') + ` (venc. original ${vencOrig.split('-').reverse().join('/')})`
+      const descricao = [String(p.description || '').replace(/\n?Atualizado em .*$/s, '').trim(), nota].filter(Boolean).join('\n').slice(0, 500)
+      await asaasGet(`/payments/${encodeURIComponent(p.id)}`, 'POST', { billingType: p.billingType, dueDate: novoVencimento, value: novoValor, description: descricao })
+      const novo = await asaasGet(`/payments/${encodeURIComponent(p.id)}`)
+      // guarda o original (boleto importado da planilha ainda com id "fatura:" passa a usar o id real)
+      if (p.invoiceNumber) await banco(`asaas_cobrancas?payment_id=eq.${encodeURIComponent('fatura:' + p.invoiceNumber)}`, 'PATCH', { payment_id: p.id }).catch(() => null)
+      await banco('asaas_cobrancas?on_conflict=payment_id', 'POST', {
+        payment_id: p.id, customer_id: p.customer, valor: novo.value, vencimento: novo.dueDate, status: novo.status, fatura: p.invoiceNumber || null,
+        descricao: novo.description, forma: novo.billingType, recalculo_base: base, vencimento_original: vencOrig, recalculado_em: new Date().toISOString(),
+      }, { Prefer: 'resolution=merge-duplicates' })
+      return resposta({ ...calculo, valor: novo.value, vencimento: novo.dueDate, boleto: novo.bankSlipUrl || null, fatura: novo.invoiceUrl || null })
     }
 
     // Lote do mês por GRUPO de clientes do Asaas (ex.: Impressos, Acessórias): boletos pendentes com vencimento no mês
