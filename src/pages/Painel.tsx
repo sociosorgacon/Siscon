@@ -223,7 +223,7 @@ function BoletosAsaas({ lista, erro, mes, v, recarregar }: { lista?: (Cobranca &
                   <span className="block truncate text-xs text-slate-400">{aba === 'pagos' ? `pago em ${data(x.data_pagamento)}` : `vence ${data(x.vencimento)}`}{x.fatura ? ` · fatura ${x.fatura}` : ''}{x.descricao ? ` · ${x.descricao}` : ''}</span></span>
                 <span className={`num shrink-0 font-semibold ${blocos.find(b => b[0] === aba)![2]}`}>{moeda(Number(x.valor))}</span>
                 {aba === 'vencidos'
-                  ? <button title="Novo vencimento com multa e juros, e baixar o boleto atualizado" className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-marca-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                  ? <button title="Novo vencimento (sem multa e juros) e baixar o boleto atualizado" className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-marca-700 ring-1 ring-slate-200 hover:bg-slate-50"
                       onClick={() => setRecalc(x)}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Recalcular</span></button>
                   : <button title="Abrir o boleto do Asaas (PDF)" className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium text-marca-700 ring-1 ring-slate-200 hover:bg-slate-50"
                       onClick={() => abrirBoleto({ id: x.payment_id, fatura: x.fatura, vencimento: x.vencimento }).catch(e => avisar((e as Error).message, 'erro'))}><span className="inline-flex items-center gap-1"><LogoAsaas className="h-3 w-3" />Boleto</span></button>}
@@ -360,7 +360,7 @@ function RecalcularBoleto({ boleto, fechar, feito }: { boleto: Cobranca & { nome
     let vivo = true
     setOcupado('Calculando…')
     chamarAsaas<Calculo>('recalcular_boleto', { ...ref, novoVencimento: venc, modo: 'simular' })
-      .then(c => { if (vivo) { setCalc(c); setValor(c.valor.toFixed(2).replace('.', ',')) } })
+      .then(c => { if (vivo) { setCalc(c); setValor(c.base.toFixed(2).replace('.', ',')) } })   // sem multa/juros: mantém o valor original
       .catch(e => avisar((e as Error).message, 'erro')).finally(() => vivo && setOcupado(''))
     return () => { vivo = false }
   }, [venc]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -389,14 +389,11 @@ function RecalcularBoleto({ boleto, fechar, feito }: { boleto: Cobranca & { nome
         <label><span className="rotulo">Novo vencimento</span>
           <input type="date" className="campo w-48" min={hojeIso()} value={venc} onChange={e => setVenc(e.target.value)} /></label>
         {calc && <div className="grid gap-1 rounded-lg bg-slate-50 p-3">
-          <div className="flex justify-between"><span>Valor original (venc. {data(calc.vencimentoOriginal)})</span><span className="num">{moeda(calc.base)}</span></div>
-          <div className="flex justify-between"><span>Multa{calc.multaPct != null ? ` (${String(calc.multaPct).replace('.', ',')}%)` : ''}</span><span className="num">{moeda(calc.multa)}</span></div>
-          <div className="flex justify-between"><span>Juros ({String(calc.jurosPct).replace('.', ',')}% a.m. × {calc.dias} dia(s))</span><span className="num">{moeda(calc.juros)}</span></div>
-          <div className="mt-1 flex items-center justify-between border-t border-slate-200 pt-2 font-semibold"><span>Novo valor</span>
+          <div className="flex items-center justify-between font-semibold"><span>Valor do boleto <span className="font-normal text-slate-500">(original, sem multa e juros)</span></span>
             <input className="campo num !h-8 w-32 text-right" inputMode="decimal" value={valor} onChange={e => setValor(e.target.value)} /></div>
-          <p className="text-[11px] text-slate-500">{calc.fonte === 'asaas' ? 'Multa e juros configurados no boleto do Asaas.' : 'O boleto não tem multa/juros no Asaas: usado o juros do Siscon (1,55% a.m.), sem multa.'} Dá para mudar o valor antes de confirmar.</p>
+          <p className="text-[11px] text-slate-500">Vencimento original {data(calc.vencimentoOriginal)}. Dá para mudar o valor antes de confirmar.</p>
         </div>}
-        <p className="text-xs text-slate-500">O <b>mesmo boleto</b> é alterado no Asaas (novo vencimento e valor) e o PDF atualizado é baixado. Quando for pago, a baixa automática quita a competência original e lança a diferença como juros.</p>
+        <p className="text-xs text-slate-500">O <b>mesmo boleto</b> é alterado no Asaas (novo vencimento) e o PDF atualizado é baixado. Quando for pago, a baixa automática quita a competência original.</p>
         {ocupado && <p className="rounded-lg bg-blue-50 px-3 py-2 text-blue-700">{ocupado}</p>}
         <div className="flex justify-end gap-2">
           <Botao type="button" variante="secundario" onClick={fechar} disabled={!!ocupado && ocupado !== 'Calculando…'}>Cancelar</Botao>
